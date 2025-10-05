@@ -1,3 +1,2 @@
 # comunism-project
-teste
-xzxzxzxsdsdsd
+poxa se pah num vai funciona
