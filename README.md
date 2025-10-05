@@ -15,7 +15,6 @@ Daqui a **30 dias**, o resultado deste experimento vai virar um **vídeo**.
 
 **Todo PR será aceito**, desde que:
 - Esteja **up-to-date** com a branch `prod`.
-- Siga as regras básicas de convivência (respeito e colaboração).
 
 ---
 
