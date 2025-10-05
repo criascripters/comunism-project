@@ -1,0 +1,21 @@
+name: Auto approve
+
+on: pull_request_target
+
+jobs:
+  auto-approve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: hmarr/auto-approve-action@v4
+        with:
+          github-token: ${{ secrets.PAT_TOKEN }}
+
+  auto-merge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge
+        uses: KeisukeYamashita/auto-pull-request-merge@v1
+        with:
+          intervalSeconds: 10
+          timeoutSeconds: 30
+          token: ${{ secrets.PAT_TOKEN }}
