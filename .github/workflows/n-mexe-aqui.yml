@@ -1,7 +1,7 @@
 name: Auto approve
 
 on: pull_request_target
-
+# Porque não pode mexer?
 jobs:
   auto-approve:
     runs-on: ubuntu-latest
