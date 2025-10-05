@@ -28,6 +28,9 @@ Erros, conflitos e falhas fazem parte do processo.
 
 ---
 
+## E se eu quiser fazer maldades? 👿
+- Faz parte do experimento social, participe do jeito q vc achar melhor!
+
 ## Regras não escritas
 
 - Comuniquem-se por issues, PRs e commits.
