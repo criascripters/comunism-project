@@ -1,0 +1,63 @@
+name: comunism-dev
+
+services:
+  backend:
+    container_name: comunism-backend-dev
+    image: comunism-backend:dev
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+      target: development
+    ports:
+      - "5122:5122"
+    env_file:
+      - ../backend/.env.development
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ../backend:/app
+      - /app/node_modules
+    depends_on:
+      - db
+    command: npm run start:dev
+
+  frontend:
+    container_name: comunism-frontend-dev
+    image: comunism-frontend:dev
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      target: development
+    ports:
+      - "3000:3000"
+    env_file:
+      - ../frontend/.env.development
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    command: npm run dev
+
+  db:
+    container_name: comunism-db-dev
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-comunism_dev}
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data-dev:/var/lib/postgresql/data
+
+volumes:
+  db-data-dev:
+    driver: local
+
+networks:
+  default:
+    driver: bridge
