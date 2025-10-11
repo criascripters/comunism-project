@@ -1,3 +1,18 @@
+# Projeto Comunista
+
+FOLHA EM BRANCO QUE TODO MUNDO PODERÁ ESCREVER
+
+Em caso de quiser coordenar as ideias recomendo usar o [IDEAS.md](./IDEAS.md) para organizar as ideias cooperativamente.
+Claro cada pasta que criarem em outro contexto por exemplo `/qualquer-coisa` etc, podem ter um README.md próprio para
+facilitar a contribuição de outras pessoas.
+
+# Regras
+
+Por favor não façam merda(crime, contaminação de vírus, quebras e etc) em nome do comunismo, isso só atrapalha a causa.
+COM ISSO USEM AS SUAS CRIATIVIDADES
+
+> Comunismo é legal 👍
+
 ```
 ⣿⣻⣟⣯⣟⣿⢿⡻⣟⣿⣽⣻⣟⡿⣻⣽⣻⢟⣻⡟⣿⡻⣟⡿⣽⣻⢿⣽⡻⣟⣿⣻⢟⣿⣻⢿⣽⣻⣽⣻⠿⣽⣻⣟⣿⣻⣟⣿⣻⡽⣯⢿⡽⣯⠿⣽⣻⣽⣻⢯⣟⣿⣻⣟⣿⣻⢯⣟⡿⣽⣻⢟⣿⡻⣟⣿⣻⣟⣿⣻⣟⣿⣻⣟⣯⣟⣯⢿⡽⣯⠿⣽⢯⠿⣽⢯⡿⣽⣻⣽⣻⣽⣻⣽⣻⡽⣯⢿⡽⣯⠿⣽⢯⠿⣽⢯⠿⣽⣫⣟
 ⣞⡷⢯⣟⣿⣻⣿⣿⡿⣶⢯⣗⣯⣽⣳⢯⣟⣯⢷⣻⢷⣻⣽⣻⢷⣯⣟⡾⣽⣻⢶⣯⣟⣾⣳⣟⣮⢷⣳⢯⣟⡷⣻⡼⣞⣷⢻⣞⣷⣻⡽⣯⢷⣯⣟⡷⣯⢶⣯⣟⣾⣳⡽⣞⣳⢯⣟⡾⣽⣳⢯⣟⡾⣽⣻⢶⣻⣞⣳⣟⣾⣳⣟⣾⣳⣟⡾⣯⣟⣷⣻⡽⣞⡿⣽⠾⣝⡷⢯⣶⢻⣶⣛⡶⣯⠷⣏⡿⣞⣽⣻⢽⡞⣿⣹⡞⣟⣧⠿⣼
