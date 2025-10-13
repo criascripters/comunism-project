@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include <unistd.h> // para usleep()
+#include <unistd.h> 
 #include <stdlib.h>
 
 int main() {
