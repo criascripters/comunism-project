@@ -2,4 +2,6 @@
 <img src="https://i.postimg.cc/YCMHpTVH/aura.gif">
 </p>
 
-<h1>voce foi censurado</h1>
+<h1 align="center">
+  voce foi censurado
+</h1>
