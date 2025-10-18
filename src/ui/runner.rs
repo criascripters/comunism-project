@@ -8,7 +8,7 @@ use crossterm::{
 use ratatui::{Terminal, prelude::CrosstermBackend};
 use std::{
     io::{self, stdout},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 // encapsula o ciclo de vida do TUI e o loop principal
@@ -18,13 +18,38 @@ pub fn run(mut app: App) -> io::Result<()> {
     stdout().execute(EnterAlternateScreen)?; // abre uma tela nova
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
 
-    // o loop principal da aplicaçao
-    while !app.sair && IGNORAR_CTRL_C.load(std::sync::atomic::Ordering::SeqCst) {
-        // 1. desenha a interface
-        terminal.draw(|frame| ui(frame, &mut app))?;
+    let mut need_redraw = true;
+    let mut last_frame = Instant::now();
 
-        // 2. checa se você apertou alguma tecla
-        if event::poll(Duration::from_millis(250))? {
+    loop {
+        if app.sair || !IGNORAR_CTRL_C.load(std::sync::atomic::Ordering::SeqCst) {
+            break;
+        }
+
+        // se overlay ta ativo queremos ~60 FPS; senao, 4 FPS ta ok
+        let tick = if app.overlay.is_some() {
+            Duration::from_millis(16)
+        } else {
+            Duration::from_millis(250)
+        };
+
+        // redesenha se:
+        // tem overlay e chegou dado novo (dirty)
+        // passou o tick (pra manter FPS/min)
+        // houve interação de usuário (mais abaixo)
+        let has_dirty = app
+            .overlay
+            .as_ref()
+            .map(|o| o.take_dirty())
+            .unwrap_or(false);
+        if has_dirty || need_redraw || last_frame.elapsed() >= tick {
+            terminal.draw(|frame| ui(frame, &mut app))?;
+            need_redraw = false;
+            last_frame = Instant::now();
+        }
+
+        // eventos de input (timeout pequeno para não bloquear a taxa de frames)
+        if event::poll(Duration::from_millis(5))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == event::KeyEventKind::Press {
                     // se tiver overlay ativo, redireciona input pro terminal
@@ -46,6 +71,7 @@ pub fn run(mut app: App) -> io::Result<()> {
                         match key.code {
                             KeyCode::Esc | KeyCode::Char('q') => {
                                 app.overlay = None; // fecha o overlay
+                                need_redraw = true;
                             }
                             _ => {
                                 term.send_key(key.code); // envia tecla pro processo
@@ -58,13 +84,21 @@ pub fn run(mut app: App) -> io::Result<()> {
                             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                                 app.sair = true
                             }
-                            KeyCode::Down => app.proximo(),
-                            KeyCode::Up => app.anterior(),
+                            KeyCode::Down => {
+                                app.proximo();
+                                need_redraw = true;
+                            }
+                            KeyCode::Up => {
+                                app.anterior();
+                                need_redraw = true;
+                            }
                             KeyCode::Enter => {
                                 if let Err(e) = app.executar_selecionado() {
                                     // não derrube a TUI; logue e continue
                                     eprintln!("erro ao executar: {e}");
                                 }
+                                // overlay acabou de abrir → redesenhar
+                                need_redraw = true;
                             }
                             _ => {}
                         }
