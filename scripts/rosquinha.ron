@@ -1,0 +1,14 @@
+Script(
+    nome: "rosquinha",
+    descricao: "um donut giratório (possivel apenas em rust™)",
+    arquivo: "rosquinha.rs",
+    compilar: Some(CompileStep(
+        compilador: "rustc",
+        args: ["{arquivo}", "-o", "/tmp/rosquinha"],
+        output: "rosquinha",
+    )),
+    executar: ExecuteStep(
+        comando: "/tmp/rosquinha",
+        args: [],
+    ),
+)

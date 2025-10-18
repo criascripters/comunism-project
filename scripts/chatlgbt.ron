@@ -1,0 +1,12 @@
+Script(
+    nome: "chatlgbt",
+    descricao: "uma ia rustacean cherosa (estranhamente escrita em python)",
+    arquivo: "chatlgbt.py",
+
+    compilar: None,
+
+    executar: ExecuteStep(
+        comando: "python3",
+        args: ["{arquivo}"],
+    ),
+)
