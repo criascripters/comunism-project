@@ -7,6 +7,6 @@ Script(
 
     executar: ExecuteStep(
         comando: "python3",
-        args: ["{arquivo}"],
+        args: ["-u", "{arquivo}"],
     ),
 )
