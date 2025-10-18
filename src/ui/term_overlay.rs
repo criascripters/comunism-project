@@ -1,9 +1,9 @@
 use crossbeam_channel::{Receiver, unbounded};
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
-use ratatui::{
-    buffer::Buffer,
-    prelude::*,
-    widgets::{Block, Borders, Paragraph},
+use ratatui::{buffer::Buffer, prelude::*, widgets::Block, widgets::Borders};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
 };
 use std::{
     io::{Read, Write},
@@ -12,21 +12,15 @@ use std::{
 use vt100;
 
 pub struct TermOverlay {
-    // PTY
     master: Box<dyn portable_pty::MasterPty + Send>,
     _child: Box<dyn portable_pty::Child + Send>,
     writer: Box<dyn Write + Send>,
     rx: Receiver<Vec<u8>>,
-
-    // emulador de terminal
     term: vt100::Parser,
-
-    // geometria atual
     rows: u16,
     cols: u16,
-
-    // titulo opcional
     pub title: String,
+    dirty: Arc<AtomicBool>,
 }
 
 impl TermOverlay {
@@ -49,10 +43,7 @@ impl TermOverlay {
         for a in args {
             builder.arg(a);
         }
-
-        // garanta cwd e TERM
-        let cwd = std::env::current_dir()?;
-        builder.cwd(cwd);
+        builder.cwd(std::env::current_dir()?);
         builder.env("TERM", "xterm-256color");
         builder.env("COLORTERM", "truecolor");
 
@@ -62,28 +53,29 @@ impl TermOverlay {
         let mut reader = pair.master.try_clone_reader()?;
         let writer = pair.master.take_writer()?;
 
-        // thread que le do PTY e envia pro canal
         let (tx, rx) = unbounded::<Vec<u8>>();
+        let dirty = Arc::new(AtomicBool::new(true));
+        let dirty_for_thread = dirty.clone();
+
         thread::spawn(move || {
             let mut buf = [0u8; 8192];
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) => {
-                        let _ = tx.send(Vec::new()); // EOF
+                        let _ = tx.send(Vec::new());
                         break;
                     }
                     Ok(n) => {
                         let _ = tx.send(buf[..n].to_vec());
+                        dirty_for_thread.store(true, Ordering::Release);
                     }
-                    Err(_) => {
-                        break;
-                    }
+                    Err(_) => break,
                 }
             }
         });
 
-        // emulador com o mesmo tamanho do PTY
-        let parser = vt100::Parser::new(rows, cols, 0);
+        // scrollback > 0 para histórico e "auto scroll down"
+        let parser = vt100::Parser::new(rows, cols, 2000);
 
         Ok(Self {
             master: pair.master,
@@ -94,7 +86,12 @@ impl TermOverlay {
             rows,
             cols,
             title: title.into(),
+            dirty,
         })
+    }
+
+    pub fn take_dirty(&self) -> bool {
+        self.dirty.swap(false, Ordering::AcqRel)
     }
 
     pub fn resize(&mut self, cols: u16, rows: u16) {
@@ -110,72 +107,34 @@ impl TermOverlay {
         self.term.set_size(rows, cols);
         self.cols = cols;
         self.rows = rows;
+        self.dirty.store(true, Ordering::Release);
     }
 
-    // drena dados pendentes do PTY e alimenta o emulador
     pub fn pump(&mut self) {
         while let Ok(chunk) = self.rx.try_recv() {
             if chunk.is_empty() {
-                // EOF
                 break;
             }
             self.term.process(&chunk);
         }
     }
 
-    // desenha o conteudo do emulador na área dada
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
-        // mantém o PTY do mesmo tamanho do retangulo disponível
         let cols = area.width.max(1);
         let rows = area.height.max(1);
         self.resize(cols, rows);
-
-        // atualiza o emulador com dados novos
         self.pump();
 
-        // converte as celulas do emulador em Lines/Spans do ratatui
-        let screen = self.term.screen();
-        let mut lines: Vec<Line> = Vec::with_capacity(rows as usize);
-        for r in 0..rows {
-            let mut spans = Vec::with_capacity(cols as usize);
-            for c in 0..cols {
-                if let Some(cell) = screen.cell(r, c) {
-                    let ch = cell.contents();
-                    let mut style = Style::default();
-                    let fg = cell.fgcolor();
-                    if let vt100::Color::Rgb(r, g, b) = fg {
-                        style = style.fg(Color::Rgb(r, g, b));
-                    }
-                    let bg = cell.bgcolor();
-                    if let vt100::Color::Rgb(r, g, b) = bg {
-                        style = style.bg(Color::Rgb(r, g, b));
-                    }
-                    if cell.bold() {
-                        style = style.add_modifier(Modifier::BOLD);
-                    }
-                    if cell.underline() {
-                        style = style.add_modifier(Modifier::UNDERLINED);
-                    }
-                    if cell.inverse() {
-                        style = style.add_modifier(Modifier::REVERSED);
-                    }
-                    spans.push(Span::styled(ch.to_string(), style));
-                } else {
-                    spans.push(Span::raw(" "));
-                }
-            }
-            lines.push(Line::from(spans));
-        }
-
-        let block = Block::default()
-            .title(self.title.clone())
-            .borders(Borders::ALL);
-        let p = Paragraph::new(lines).block(block);
-        frame.render_widget(Clear, area); // limpa atras do overlay
-        frame.render_widget(p, area);
+        // desenha direto no buffer
+        frame.render_widget(
+            TermWidget {
+                screen: self.term.screen().clone(),
+                title: self.title.clone(),
+            },
+            area,
+        );
     }
 
-    // envia teclas pro processo (opcional)
     pub fn send_str(&mut self, s: &str) {
         let _ = self.writer.write_all(s.as_bytes());
         let _ = self.writer.flush();
@@ -200,16 +159,100 @@ impl TermOverlay {
     }
 }
 
-// widget Clear para limpar a área do overlay
-struct Clear;
-impl Widget for Clear {
+struct TermWidget {
+    screen: vt100::Screen,
+    title: String,
+}
+
+impl Widget for TermWidget {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        for y in area.top()..area.bottom() {
-            for x in area.left()..area.right() {
-                let cell = buf.cell_mut((x, y)).unwrap();
+        // bordas
+        let block = Block::default().title(self.title).borders(Borders::ALL);
+        block.render(area, buf);
+        let inner = area.inner(Margin {
+            horizontal: 1,
+            vertical: 1,
+        });
+
+        // mostra sempre as ultimas linhas (comportamento de terminal)
+        for y in 0..inner.height {
+            for x in 0..inner.width {
+                let by = inner.y + y;
+                let bx = inner.x + x;
+
+                let cell = buf.cell_mut((bx, by)).unwrap();
                 cell.reset();
-                cell.set_symbol(" ");
+
+                // pega a célula da tela - o vt100 já cuida do scrollback
+                if let Some(vc) = self.screen.cell(y, x) {
+                    // símbolo
+                    let s = vc.contents();
+                    let ch = if s.is_empty() {
+                        ' '
+                    } else {
+                        s.chars().next().unwrap_or(' ')
+                    };
+                    let mut tmp = [0u8; 4];
+                    let sym = ch.encode_utf8(&mut tmp);
+                    cell.set_symbol(sym);
+
+                    // cores
+                    let fg = vt100_to_ratatui_color(vc.fgcolor());
+                    let bg = vt100_to_ratatui_color(vc.bgcolor());
+
+                    if let Some(c) = fg {
+                        cell.set_fg(c);
+                    }
+                    if let Some(c) = bg {
+                        cell.set_bg(c);
+                    }
+
+                    // atributos
+                    if vc.bold() {
+                        cell.set_style(cell.style().add_modifier(Modifier::BOLD));
+                    }
+                    if vc.underline() {
+                        cell.set_style(cell.style().add_modifier(Modifier::UNDERLINED));
+                    }
+                    if vc.inverse() {
+                        cell.set_style(cell.style().add_modifier(Modifier::REVERSED));
+                    }
+                } else {
+                    cell.set_symbol(" ");
+                }
             }
         }
+    }
+}
+
+// Helper: converte vt100::Color para ratatui::style::Color
+fn vt100_to_ratatui_color(c: vt100::Color) -> Option<Color> {
+    match c {
+        vt100::Color::Default => None, // mantém a cor padrão do terminal
+        vt100::Color::Idx(n) => {
+            // cores ANSI indexadas (0-255)
+            // 0-15: cores básicas (mapeia direto)
+            // 16-255: paleta estendida
+            match n {
+                0 => Some(Color::Black),
+                1 => Some(Color::Red),
+                2 => Some(Color::Green),
+                3 => Some(Color::Yellow),
+                4 => Some(Color::Blue),
+                5 => Some(Color::Magenta),
+                6 => Some(Color::Cyan),
+                7 => Some(Color::Gray), // ou White
+                8 => Some(Color::DarkGray),
+                9 => Some(Color::LightRed),
+                10 => Some(Color::LightGreen),
+                11 => Some(Color::LightYellow),
+                12 => Some(Color::LightBlue),
+                13 => Some(Color::LightMagenta),
+                14 => Some(Color::LightCyan),
+                15 => Some(Color::White),
+                _ => Some(Color::Indexed(n)), // 16-255: usa a paleta 256 do ratatui
+            }
+        }
+        vt100::Color::Rgb(r, g, b) => Some(Color::Rgb(r, g, b)),
     }
 }
