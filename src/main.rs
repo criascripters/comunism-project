@@ -1,15 +1,14 @@
 mod app;
-mod executables;
-mod runner;
-mod signals;
+mod scripts;
 mod ui;
+mod utils;
 
 use std::io;
 
 fn main() -> io::Result<()> {
     // força inicialização do sistema de controle de sinais
-    signals::init();
+    utils::init();
 
     let app = app::App::new();
-    runner::run(app)
+    ui::runner::run(app)
 }

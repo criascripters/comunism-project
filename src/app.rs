@@ -1,12 +1,9 @@
-use crate::executables::{Executable, detectar_scripts};
-use crate::signals::EXECUTANDO_SCRIPT;
+use crate::scripts::{Executable, detectar_scripts};
+use crate::ui::term_overlay::TermOverlay;
+use std::collections::HashMap;
+use std::process::Command;
 
-use crossterm::{
-    ExecutableCommand,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
-};
 use ratatui::widgets::ListState;
-use std::io::{self, stdout};
 
 // uma struct pra guardar o estado da aplicaçao
 pub struct App {
@@ -14,6 +11,7 @@ pub struct App {
     pub script_selecionado: usize, // índice do script real (não da UI)
     pub ui_state: ListState,
     pub sair: bool,
+    pub overlay: Option<TermOverlay>,
 }
 
 impl App {
@@ -27,6 +25,7 @@ impl App {
             script_selecionado: 0,
             ui_state,
             sair: false,
+            overlay: None,
         }
     }
 
@@ -64,46 +63,104 @@ impl App {
     // o truque de mágica: executar o item selecionado
     pub fn executar_selecionado(&mut self) -> Result<(), String> {
         if let Some(atracao) = self.codigos.get(self.script_selecionado) {
-            // "desliga" o tui temporariamente
-            // pra não bugar tudo quando o script c tentar limpar a tela
-            disable_raw_mode().unwrap();
-            stdout().execute(LeaveAlternateScreen).unwrap();
+            // 1) Script oficial (.ron): compila (se precisar) e substitui {arquivo}/{output}
+            if let Some(script) = atracao
+                .as_any()
+                .downcast_ref::<crate::scripts::executables::Script>()
+            {
+                let mut vars = HashMap::new();
+                vars.insert("arquivo".to_string(), script.arquivo.clone());
 
-            // avisa que ta executando um script
-            EXECUTANDO_SCRIPT.store(true, std::sync::atomic::Ordering::SeqCst);
+                // compile step
+                if let Some(compile) = &script.compilar {
+                    vars.insert("output".to_string(), compile.output.clone());
+                    let cargs: Vec<String> = compile
+                        .args
+                        .iter()
+                        .map(|a| substituir_vars(a, &vars))
+                        .collect();
 
-            // executa a atração (filho recebe SIGINT automaticamente se pressionado)
-            let resultado = atracao.execute();
+                    let status = Command::new(&compile.compilador)
+                        .args(&cargs)
+                        .status()
+                        .map_err(|e| format!("falha ao compilar {}: {}", script.arquivo, e))?;
 
-            // avisa que terminou de executar
-            EXECUTANDO_SCRIPT.store(false, std::sync::atomic::Ordering::SeqCst);
+                    if !status.success() {
+                        return Err(format!("compilação de {} falhou", script.arquivo));
+                    }
+                }
 
-            // nao volta pro tui automaticamente, deixa o usuario ver o output
-            println!("\npressione enter para voltar ao menu");
-            // desativa raw mode temporariamente pra ler input normal
-            disable_raw_mode().unwrap();
+                fn substituir_vars(template: &str, vars: &HashMap<String, String>) -> String {
+                    let mut resultado = template.to_string();
+                    for (k, v) in vars {
+                        resultado = resultado.replace(&format!("{{{}}}", k), v);
+                    }
+                    resultado
+                }
 
-            // espera o usuario apertar enter antes de voltar ao menu
-            let mut input = String::new();
-            std::io::stdin().read_line(&mut input).unwrap();
+                // substitui em comando e args (usa {output} se tiver)
+                let cmd_res = substituir_vars(&script.executar.comando, &vars);
+                let mut args_res: Vec<String> = script
+                    .executar
+                    .args
+                    .iter()
+                    .map(|a| substituir_vars(a, &vars))
+                    .collect();
 
-            // reativa raw mode antes de voltar pro tui
-            enable_raw_mode().unwrap();
+                // se algum arg é o arquivo original, torne absoluto (ajuda node/python)
+                if let Ok(abs) = std::fs::canonicalize(&script.arquivo) {
+                    for a in &mut args_res {
+                        if a == &script.arquivo {
+                            *a = abs.to_string_lossy().to_string();
+                        }
+                    }
+                }
 
-            // limpa a tela e restaura o cursor antes de voltar pro tui
-            print!("\x1B[2J\x1B[H");
-            io::Write::flush(&mut stdout()).unwrap();
+                // tamanhos (rosquinha precisa de 80x22, o resto pode ser 80x24)
+                let (cols, rows) = if script.nome.to_lowercase().contains("rosquinha") {
+                    (80, 22)
+                } else {
+                    (80, 24)
+                };
 
-            // força uma atualizacao completa do terminal
-            std::thread::sleep(std::time::Duration::from_millis(50));
-            print!("\x1Bc"); // reset completo do terminal
-            io::Write::flush(&mut stdout()).unwrap();
+                let arg_refs: Vec<&str> = args_res.iter().map(|s| s.as_str()).collect();
+                let overlay = crate::ui::term_overlay::TermOverlay::spawn(
+                    &cmd_res,
+                    &arg_refs,
+                    cols,
+                    rows,
+                    script.nome(),
+                )
+                .map_err(|e| format!("falha ao criar terminal: {e}"))?;
+                self.overlay = Some(overlay);
+                return Ok(());
+            }
 
-            // e agora religa o tui pra voltar ao nosso menu
-            enable_raw_mode().unwrap();
-            stdout().execute(EnterAlternateScreen).unwrap();
-
-            return resultado;
+            // script não-oficial (auto)
+            if let Some(auto) = atracao
+                .as_any()
+                .downcast_ref::<crate::scripts::executables::ScriptNaoOficial>()
+            {
+                // arquivo absoluto
+                let mut path = std::path::PathBuf::from(&auto.arquivo);
+                if path.is_relative() {
+                    if let Ok(abs) = std::fs::canonicalize(&path) {
+                        path = abs;
+                    }
+                }
+                let args = vec![path.to_string_lossy().to_string()];
+                let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+                let overlay = crate::ui::term_overlay::TermOverlay::spawn(
+                    &auto.interpretador,
+                    &arg_refs,
+                    80,
+                    24,
+                    auto.nome(),
+                )
+                .map_err(|e| format!("falha ao criar terminal: {e}"))?;
+                self.overlay = Some(overlay);
+                return Ok(());
+            }
         }
 
         Ok(()) // se nada estiver selecionado, não faz nada

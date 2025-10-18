@@ -17,6 +17,12 @@ pub trait Executable {
 
     // permite verificar o tipo concreto em tempo de execução
     fn as_any(&self) -> &dyn std::any::Any;
+
+    // comando principal para execução no PTY
+    fn comando(&self) -> &str;
+
+    // argumentos para o comando
+    fn args(&self) -> Vec<&str>;
 }
 
 // structs pros scripts oficiais em formato RON
@@ -98,6 +104,14 @@ impl Executable for Script {
         Ok(())
     }
 
+    fn comando(&self) -> &str {
+        &self.executar.comando
+    }
+
+    fn args(&self) -> Vec<&str> {
+        self.executar.args.iter().map(|s| s.as_str()).collect()
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -142,6 +156,14 @@ impl Executable for ScriptNaoOficial {
             .map_err(|e| format!("falha ao executar: {}", e))?;
 
         Ok(())
+    }
+
+    fn comando(&self) -> &str {
+        &self.interpretador
+    }
+
+    fn args(&self) -> Vec<&str> {
+        vec![&self.arquivo]
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
