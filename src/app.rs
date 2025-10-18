@@ -74,6 +74,18 @@ impl App {
                 // compile step
                 if let Some(compile) = &script.compilar {
                     vars.insert("output".to_string(), compile.output.clone());
+
+                    // abre overlay instantaneamente com mensagem de compilação
+                    let overlay_temp = crate::ui::term_overlay::TermOverlay::spawn(
+                        "echo",
+                        &["compilando...", "aguarde um momento"],
+                        80,
+                        22,
+                        format!("{} (compilando...)", script.nome()),
+                    )
+                    .map_err(|e| format!("falha ao criar terminal: {e}"))?;
+                    self.overlay = Some(overlay_temp);
+
                     let cargs: Vec<String> = compile
                         .args
                         .iter()
@@ -124,6 +136,7 @@ impl App {
                 };
 
                 let arg_refs: Vec<&str> = args_res.iter().map(|s| s.as_str()).collect();
+                // substitui o overlay temporário pelo processo real
                 let overlay = crate::ui::term_overlay::TermOverlay::spawn(
                     &cmd_res,
                     &arg_refs,
