@@ -26,6 +26,11 @@ pub fn run(mut app: App) -> io::Result<()> {
             break;
         }
 
+        let changed = app.process_messages();
+        if changed {
+            need_redraw = true;
+        }
+
         // se overlay ta ativo queremos ~60 FPS; senao, 4 FPS ta ok
         let tick = if app.overlay.is_some() {
             Duration::from_millis(16)
@@ -52,9 +57,9 @@ pub fn run(mut app: App) -> io::Result<()> {
         if event::poll(Duration::from_millis(5))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == event::KeyEventKind::Press {
-                    // se tiver overlay ativo, redireciona input pro terminal
+                    // se overlay ta ativo, redireciona input pro terminal
                     if let Some(term) = &mut app.overlay {
-                        // envia Ctrl+C / Ctrl+D para o processo
+                        // atalhos com CTRL
                         if key.modifiers.contains(KeyModifiers::CONTROL) {
                             match key.code {
                                 KeyCode::Char('c') => {
@@ -65,16 +70,24 @@ pub fn run(mut app: App) -> io::Result<()> {
                                     term.send_str("\x04");
                                     continue;
                                 } // EOT
+                                KeyCode::Char('q') => {
+                                    // Ctrl+Q fecha o overlay
+                                    app.overlay = None;
+                                    need_redraw = true;
+                                    continue;
+                                }
                                 _ => {}
                             }
                         }
+
                         match key.code {
-                            KeyCode::Esc | KeyCode::Char('q') => {
-                                app.overlay = None; // fecha o overlay
+                            KeyCode::Esc => {
+                                // so Esc fecha o overlay
+                                app.overlay = None;
                                 need_redraw = true;
                             }
                             _ => {
-                                term.send_key(key.code); // envia tecla pro processo
+                                term.send_key(key.code); // entrega a tecla pro processo (Python/Textual)
                             }
                         }
                     } else {
@@ -94,7 +107,6 @@ pub fn run(mut app: App) -> io::Result<()> {
                             }
                             KeyCode::Enter => {
                                 if let Err(e) = app.executar_selecionado() {
-                                    // não derrube a TUI; logue e continue
                                     eprintln!("erro ao executar: {e}");
                                 }
                                 // overlay acabou de abrir → redesenhar
@@ -108,7 +120,7 @@ pub fn run(mut app: App) -> io::Result<()> {
         }
     }
 
-    // restauração do terminal
+    // restaura o terminal
     disable_raw_mode()?;
     stdout().execute(LeaveAlternateScreen)?;
     Ok(())

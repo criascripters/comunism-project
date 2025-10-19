@@ -129,7 +129,7 @@ impl TermOverlay {
         frame.render_widget(
             TermWidget {
                 screen: self.term.screen().clone(),
-                title: self.title.clone(),
+                title: format!("{} [esc pra sair]", self.title),
             },
             area,
         );
@@ -142,8 +142,10 @@ impl TermOverlay {
 
     pub fn send_key(&mut self, key: crossterm::event::KeyCode) {
         match key {
+            // enter como LF melhora compat com Textual e muitos TUIs
             crossterm::event::KeyCode::Enter => self.send_str("\r"),
-            crossterm::event::KeyCode::Backspace => self.send_str("\x08"),
+            // backspace mais comum é DEL (0x7f), alguns apps ignoram 0x08
+            crossterm::event::KeyCode::Backspace => self.send_str("\x7f"),
             crossterm::event::KeyCode::Tab => self.send_str("\t"),
             crossterm::event::KeyCode::Left => self.send_str("\x1b[D"),
             crossterm::event::KeyCode::Right => self.send_str("\x1b[C"),
@@ -182,6 +184,7 @@ impl Widget for TermWidget {
 
                 let cell = buf.cell_mut((bx, by)).unwrap();
                 cell.reset();
+                cell.set_bg(Color::Black);
 
                 // pega a célula da tela - o vt100 já cuida do scrollback
                 if let Some(vc) = self.screen.cell(y, x) {
