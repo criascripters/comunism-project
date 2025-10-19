@@ -3,7 +3,16 @@ use crate::ui::term_overlay::TermOverlay;
 use std::collections::HashMap;
 use std::process::Command;
 
+use crossbeam_channel::{Receiver, Sender, unbounded};
 use ratatui::widgets::ListState;
+
+fn substituir_vars(template: &str, vars: &HashMap<String, String>) -> String {
+    let mut resultado = template.to_string();
+    for (k, v) in vars {
+        resultado = resultado.replace(&format!("{{{}}}", k), v);
+    }
+    resultado
+}
 
 // uma struct pra guardar o estado da aplicaçao
 pub struct App {
@@ -12,6 +21,18 @@ pub struct App {
     pub ui_state: ListState,
     pub sair: bool,
     pub overlay: Option<TermOverlay>,
+    tx: Sender<UiMsg>,
+    rx: Receiver<UiMsg>,
+}
+
+enum UiMsg {
+    SpawnOverlay {
+        cmd: String,
+        args: Vec<String>,
+        cols: u16,
+        rows: u16,
+        title: String,
+    },
 }
 
 impl App {
@@ -20,12 +41,15 @@ impl App {
         let codigos = detectar_scripts();
         let mut ui_state = ListState::default();
         ui_state.select(Some(0));
+        let (tx, rx) = unbounded();
         App {
             codigos,
             script_selecionado: 0,
             ui_state,
             sair: false,
             overlay: None,
+            tx,
+            rx,
         }
     }
 
@@ -63,7 +87,6 @@ impl App {
     // o truque de mágica: executar o item selecionado
     pub fn executar_selecionado(&mut self) -> Result<(), String> {
         if let Some(atracao) = self.codigos.get(self.script_selecionado) {
-            // 1) Script oficial (.ron): compila (se precisar) e substitui {arquivo}/{output}
             if let Some(script) = atracao
                 .as_any()
                 .downcast_ref::<crate::scripts::executables::Script>()
@@ -71,11 +94,9 @@ impl App {
                 let mut vars = HashMap::new();
                 vars.insert("arquivo".to_string(), script.arquivo.clone());
 
-                // compile step
                 if let Some(compile) = &script.compilar {
                     vars.insert("output".to_string(), compile.output.clone());
 
-                    // abre overlay instantaneamente com mensagem de compilação
                     let overlay_temp = crate::ui::term_overlay::TermOverlay::spawn(
                         "echo",
                         &["compilando...", "aguarde um momento"],
@@ -91,26 +112,50 @@ impl App {
                         .iter()
                         .map(|a| substituir_vars(a, &vars))
                         .collect();
+                    let compilador = compile.compilador.clone();
 
-                    let status = Command::new(&compile.compilador)
-                        .args(&cargs)
-                        .status()
-                        .map_err(|e| format!("falha ao compilar {}: {}", script.arquivo, e))?;
+                    let cmd_res = substituir_vars(&script.executar.comando, &vars);
+                    let mut args_res: Vec<String> = script
+                        .executar
+                        .args
+                        .iter()
+                        .map(|a| substituir_vars(a, &vars))
+                        .collect();
 
-                    if !status.success() {
-                        return Err(format!("compilação de {} falhou", script.arquivo));
+                    if let Ok(abs) = std::fs::canonicalize(&script.arquivo) {
+                        for a in &mut args_res {
+                            if a == &script.arquivo {
+                                *a = abs.to_string_lossy().to_string();
+                            }
+                        }
                     }
+
+                    let (cols, rows) = if script.nome.to_lowercase().contains("rosquinha") {
+                        (80, 22)
+                    } else {
+                        (80, 24)
+                    };
+
+                    let tx = self.tx.clone();
+                    let title = script.nome().to_string();
+
+                    std::thread::spawn(move || {
+                        if let Ok(status) = Command::new(&compilador).args(&cargs).status() {
+                            if status.success() {
+                                let _ = tx.send(UiMsg::SpawnOverlay {
+                                    cmd: cmd_res,
+                                    args: args_res,
+                                    cols,
+                                    rows,
+                                    title,
+                                });
+                            }
+                        }
+                    });
+
+                    return Ok(());
                 }
 
-                fn substituir_vars(template: &str, vars: &HashMap<String, String>) -> String {
-                    let mut resultado = template.to_string();
-                    for (k, v) in vars {
-                        resultado = resultado.replace(&format!("{{{}}}", k), v);
-                    }
-                    resultado
-                }
-
-                // substitui em comando e args (usa {output} se tiver)
                 let cmd_res = substituir_vars(&script.executar.comando, &vars);
                 let mut args_res: Vec<String> = script
                     .executar
@@ -119,7 +164,6 @@ impl App {
                     .map(|a| substituir_vars(a, &vars))
                     .collect();
 
-                // se algum arg é o arquivo original, torne absoluto (ajuda node/python)
                 if let Ok(abs) = std::fs::canonicalize(&script.arquivo) {
                     for a in &mut args_res {
                         if a == &script.arquivo {
@@ -128,7 +172,6 @@ impl App {
                     }
                 }
 
-                // tamanhos (rosquinha precisa de 80x22, o resto pode ser 80x24)
                 let (cols, rows) = if script.nome.to_lowercase().contains("rosquinha") {
                     (80, 22)
                 } else {
@@ -136,7 +179,6 @@ impl App {
                 };
 
                 let arg_refs: Vec<&str> = args_res.iter().map(|s| s.as_str()).collect();
-                // substitui o overlay temporário pelo processo real
                 let overlay = crate::ui::term_overlay::TermOverlay::spawn(
                     &cmd_res,
                     &arg_refs,
@@ -149,12 +191,10 @@ impl App {
                 return Ok(());
             }
 
-            // script não-oficial (auto)
             if let Some(auto) = atracao
                 .as_any()
                 .downcast_ref::<crate::scripts::executables::ScriptNaoOficial>()
             {
-                // arquivo absoluto
                 let mut path = std::path::PathBuf::from(&auto.arquivo);
                 if path.is_relative() {
                     if let Ok(abs) = std::fs::canonicalize(&path) {
@@ -176,6 +216,30 @@ impl App {
             }
         }
 
-        Ok(()) // se nada estiver selecionado, não faz nada
+        Ok(())
+    }
+
+    pub fn process_messages(&mut self) -> bool {
+        let mut changed = false;
+        while let Ok(msg) = self.rx.try_recv() {
+            match msg {
+                UiMsg::SpawnOverlay {
+                    cmd,
+                    args,
+                    cols,
+                    rows,
+                    title,
+                } => {
+                    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+                    if let Ok(overlay) = crate::ui::term_overlay::TermOverlay::spawn(
+                        &cmd, &arg_refs, cols, rows, title,
+                    ) {
+                        self.overlay = Some(overlay);
+                        changed = true;
+                    }
+                }
+            }
+        }
+        changed
     }
 }
