@@ -63,6 +63,15 @@ static INTERPRETERS: &[(&str, &str, &str)] = &[
         "rustc",
         "rust (leia-se: melhor linguagem já inventada)",
     ),
+    ("pl", "perl", "perl 𓀀 𓀁 𓀂 𓀃 𓀄 𓀅 𓀆 𓀇 𓀈 𓀉 𓀊 𓀋 "),
+    ("hs", "runhaskell", "haskell (alguem usa isso sem meme?)"),
+    ("go", "go run", "golang (mindset avançado de dev senior)"),
+    (
+        "lua",
+        "lua",
+        "lua minguante, lua crescente... declaro ser o seu mais lindo amante",
+    ),
+    ("pro", "swipl", "prolog (quem colocou isso aqui?)"),
 ];
 
 pub struct ScriptNaoOficial {
