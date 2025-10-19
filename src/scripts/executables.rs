@@ -72,6 +72,7 @@ static INTERPRETERS: &[(&str, &str, &str)] = &[
         "lua minguante, lua crescente... declaro ser o seu mais lindo amante",
     ),
     ("pro", "swipl", "prolog (quem colocou isso aqui?)"),
+    ("ga", "gamba", "gambalang :p"),
 ];
 
 pub struct ScriptNaoOficial {
