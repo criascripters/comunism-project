@@ -270,7 +270,7 @@ impl MessageOverlay {
     }
 }
 
-// NOVO: enum unificador de overlays
+// enum unificador de overlays
 pub enum Overlay {
     Terminal(TermOverlay),
     Message(MessageOverlay),
