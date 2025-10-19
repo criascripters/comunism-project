@@ -1,5 +1,7 @@
 use crossbeam_channel::{Receiver, unbounded};
+use crossterm::event::KeyCode;
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+use ratatui::widgets::{Paragraph, Wrap};
 use ratatui::{buffer::Buffer, prelude::*, widgets::Block, widgets::Borders};
 use std::sync::{
     Arc,
@@ -224,6 +226,80 @@ impl Widget for TermWidget {
                     cell.set_symbol(" ");
                 }
             }
+        }
+    }
+}
+
+// popup simples de mensagem (melhor q um eprintln horroroso)
+pub struct MessageOverlay {
+    pub title: String,
+    pub text: String,
+    dirty: Arc<AtomicBool>,
+}
+
+impl MessageOverlay {
+    pub fn new(title: impl Into<String>, text: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            text: text.into(),
+            dirty: Arc::new(AtomicBool::new(true)),
+        }
+    }
+
+    pub fn take_dirty(&self) -> bool {
+        self.dirty.swap(false, Ordering::AcqRel)
+    }
+
+    pub fn render(&self, frame: &mut Frame, area: Rect) {
+        // borda
+        let block = Block::default()
+            .title(format!("{} [esc pra sair]", self.title))
+            .borders(Borders::ALL);
+        frame.render_widget(block, area);
+
+        // conteúdo
+        let inner = area.inner(Margin {
+            horizontal: 1,
+            vertical: 1,
+        });
+
+        let p = Paragraph::new(self.text.clone())
+            .wrap(Wrap { trim: false })
+            .style(Style::default().fg(Color::White).bg(Color::Black));
+        frame.render_widget(p, inner);
+    }
+}
+
+// NOVO: enum unificador de overlays
+pub enum Overlay {
+    Terminal(TermOverlay),
+    Message(MessageOverlay),
+}
+
+impl Overlay {
+    pub fn take_dirty(&self) -> bool {
+        match self {
+            Overlay::Terminal(t) => t.take_dirty(),
+            Overlay::Message(m) => m.take_dirty(),
+        }
+    }
+
+    pub fn render(&mut self, frame: &mut Frame, area: Rect) {
+        match self {
+            Overlay::Terminal(t) => t.render(frame, area),
+            Overlay::Message(m) => m.render(frame, area),
+        }
+    }
+
+    pub fn send_key(&mut self, key: KeyCode) {
+        if let Overlay::Terminal(t) = self {
+            t.send_key(key)
+        }
+    }
+
+    pub fn send_str(&mut self, s: &str) {
+        if let Overlay::Terminal(t) = self {
+            t.send_str(s)
         }
     }
 }
