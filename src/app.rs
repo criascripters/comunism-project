@@ -1,6 +1,7 @@
 use crate::scripts::{Executable, detectar_scripts};
-use crate::ui::term_overlay::{MessageOverlay, Overlay, TermOverlay};
+use crate::ui::term_overlay::{MessageOverlay, Overlay};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crossbeam_channel::{Receiver, Sender, unbounded};
@@ -57,6 +58,119 @@ impl App {
         }
     }
 
+    fn gamba_bin_candidates(&self) -> Vec<PathBuf> {
+        let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let bin_name = if cfg!(windows) { "gamba.exe" } else { "gamba" };
+        // primeiro tenta o perfil atual (debug na maioria das vezes), depois o outro
+        let profiles = if cfg!(debug_assertions) {
+            vec!["debug", "release"]
+        } else {
+            vec!["release", "debug"]
+        };
+        profiles
+            .into_iter()
+            .map(|p| {
+                let mut pb = root.clone();
+                pb.push("target");
+                pb.push(p);
+                pb.push(bin_name);
+                pb
+            })
+            .collect()
+    }
+
+    fn spawn_gamba_with_build_if_needed(
+        &mut self,
+        script_abs: String,
+        title: String,
+    ) -> Result<(), String> {
+        // tenta achar um binário existente
+        if let Some(bin) = self.gamba_bin_candidates().into_iter().find(|p| p.exists()) {
+            let cmd = bin.to_string_lossy().to_string();
+            let args = vec![script_abs];
+            let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+            match crate::ui::term_overlay::TermOverlay::spawn(&cmd, &arg_refs, 80, 24, title) {
+                Ok(overlay) => {
+                    self.overlay = Some(Overlay::Terminal(overlay));
+                    return Ok(());
+                }
+                Err(e) => {
+                    self.overlay = Some(Overlay::Message(MessageOverlay::new(
+                        "erro ao criar terminal",
+                        format!("{e}"),
+                    )));
+                    return Err(format!("{e}"));
+                }
+            }
+        }
+
+        // não achou binário -> compila uma vez (debug por padrão)
+        let overlay_temp = crate::ui::term_overlay::TermOverlay::spawn(
+            "echo",
+            &["compilando gamba...", "aguarde um momento"],
+            80,
+            22,
+            format!("{} (compilando...)", title),
+        )
+        .map_err(|e| format!("falha ao criar terminal: {e}"))?;
+        self.overlay = Some(Overlay::Terminal(overlay_temp));
+
+        let tx = self.tx.clone();
+
+        // precisamos desses valores dentro da thread
+        let title_cl = title.clone();
+        // após compilar, vamos usar target/debug/gamba como caminho padrão
+        let mut debug_bin = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        debug_bin.push("target");
+        debug_bin.push("debug");
+        debug_bin.push(if cfg!(windows) { "gamba.exe" } else { "gamba" });
+        let debug_bin_str = debug_bin.to_string_lossy().to_string();
+        let script_abs_cl = script_abs.clone();
+
+        std::thread::spawn(move || {
+            match std::process::Command::new("cargo")
+                .args(&["build", "-q", "-p", "gamba"])
+                .output()
+            {
+                Ok(out) => {
+                    if out.status.success() && Path::new(&debug_bin_str).exists() {
+                        let _ = tx.send(UiMsg::SpawnOverlay {
+                            cmd: debug_bin_str,
+                            args: vec![script_abs_cl],
+                            cols: 80,
+                            rows: 24,
+                            title: title_cl,
+                        });
+                    } else {
+                        let err_text = format!(
+                            "falha ao compilar gamba (status: {:?})
+stdout:
+{}
+stderr:
+{}",
+                            out.status.code(),
+                            String::from_utf8_lossy(&out.stdout),
+                            String::from_utf8_lossy(&out.stderr),
+                        );
+                        let _ = tx.send(UiMsg::ShowMessage {
+                            title: "compilação do gamba falhou".to_string(),
+                            text: err_text,
+                        });
+                    }
+                }
+                Err(e) => {
+                    let err_text = format!("não consegui invocar cargo build -p gamba: {}", e);
+                    let _ = tx.send(UiMsg::ShowMessage {
+                        title: "erro ao invocar cargo".to_string(),
+                        text: err_text,
+                    });
+                }
+            }
+        });
+
+        Ok(())
+    }
+
     // navegação pra quando tiver mais itens
     pub fn proximo(&mut self) {
         if self.codigos.is_empty() {
@@ -95,6 +209,21 @@ impl App {
                 .as_any()
                 .downcast_ref::<crate::scripts::executables::Script>()
             {
+                // se o arquivo oficial termina com .ga, usa o binário gamba direto
+                if std::path::Path::new(&script.arquivo)
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .map(|ext| ext.eq_ignore_ascii_case("ga"))
+                    .unwrap_or(false)
+                {
+                    let abs = std::fs::canonicalize(&script.arquivo)
+                        .unwrap_or_else(|_| std::path::PathBuf::from(&script.arquivo));
+                    return self.spawn_gamba_with_build_if_needed(
+                        abs.to_string_lossy().to_string(),
+                        script.nome().to_string(),
+                    );
+                }
+
                 let mut vars = HashMap::new();
                 vars.insert("arquivo".to_string(), script.arquivo.clone());
 
@@ -243,7 +372,21 @@ erro: {}",
                         path = abs;
                     }
                 }
-                // separar go run em comando + subcomando (cuidado com isso se for adicionar novas langs)
+
+                // trata .ga de forma especial: usa binário em target/ e compila se necessário (uma vez)
+                let is_ga = path
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.eq_ignore_ascii_case("ga"))
+                    .unwrap_or(false);
+
+                if is_ga {
+                    let title = auto.nome().to_string();
+                    let script_abs = path.to_string_lossy().to_string();
+                    return self.spawn_gamba_with_build_if_needed(script_abs, title);
+                }
+
+                // comportamento padrão para outras linguagens
                 let parts: Vec<&str> = auto.interpretador.split_whitespace().collect();
                 let cmd = parts.get(0).map(|s| s.to_string()).unwrap_or_default();
                 let mut args: Vec<String> =
