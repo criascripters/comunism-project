@@ -9,6 +9,6 @@ fn main() -> io::Result<()> {
     // força inicialização do sistema de controle de sinais
     utils::init();
 
-    let app = app::App::new();
+    let aрp = app::App::new();
     ui::runner::run(app)
 }
