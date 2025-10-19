@@ -226,7 +226,7 @@ pub fn install_builtins(env: &Env) {
         Ok(Value::Number(match &args[0] {
             Value::List(xs) => xs.len() as f64,
             Value::String(s) => s.chars().count() as f64,
-            Value::Map(m) => m.len() as f64, // NOVO
+            Value::Map(m) => m.len() as f64,
             _ => return Err(GambaError::runtime("len: esperado List, String ou Map")),
         }))
     });
