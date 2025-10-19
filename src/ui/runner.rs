@@ -58,36 +58,45 @@ pub fn run(mut app: App) -> io::Result<()> {
             if let Event::Key(key) = event::read()? {
                 if key.kind == event::KeyEventKind::Press {
                     // se overlay ta ativo, redireciona input pro terminal
-                    if let Some(term) = &mut app.overlay {
-                        // atalhos com CTRL
-                        if key.modifiers.contains(KeyModifiers::CONTROL) {
-                            match key.code {
-                                KeyCode::Char('c') => {
-                                    term.send_str("\x03");
-                                    continue;
-                                } // SIGINT
-                                KeyCode::Char('d') => {
-                                    term.send_str("\x04");
-                                    continue;
-                                } // EOT
-                                KeyCode::Char('q') => {
-                                    // Ctrl+Q fecha o overlay
+                    if let Some(ov) = &mut app.overlay {
+                        // estamos com overlay aberto
+                        match ov {
+                            crate::ui::term_overlay::Overlay::Terminal(term) => {
+                                // atalhos com CTRL
+                                if key.modifiers.contains(KeyModifiers::CONTROL) {
+                                    match key.code {
+                                        KeyCode::Char('c') => {
+                                            term.send_str("\x03");
+                                            continue;
+                                        } // SIGINT
+                                        KeyCode::Char('d') => {
+                                            term.send_str("\x04");
+                                            continue;
+                                        } // EOT
+                                        KeyCode::Char('q') => {
+                                            app.overlay = None;
+                                            need_redraw = true;
+                                            continue;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                match key.code {
+                                    KeyCode::Esc => {
+                                        app.overlay = None;
+                                        need_redraw = true;
+                                    }
+                                    _ => {
+                                        term.send_key(key.code);
+                                    }
+                                }
+                            }
+                            crate::ui::term_overlay::Overlay::Message(_) => {
+                                if let KeyCode::Esc = key.code {
                                     app.overlay = None;
                                     need_redraw = true;
-                                    continue;
                                 }
-                                _ => {}
-                            }
-                        }
-
-                        match key.code {
-                            KeyCode::Esc => {
-                                // so Esc fecha o overlay
-                                app.overlay = None;
-                                need_redraw = true;
-                            }
-                            _ => {
-                                term.send_key(key.code); // entrega a tecla pro processo (Python/Textual)
+                                // outras teclas ignoradas no popup
                             }
                         }
                     } else {
@@ -106,9 +115,7 @@ pub fn run(mut app: App) -> io::Result<()> {
                                 need_redraw = true;
                             }
                             KeyCode::Enter => {
-                                if let Err(e) = app.executar_selecionado() {
-                                    eprintln!("erro ao executar: {e}");
-                                }
+                                let _ = app.executar_selecionado();
                                 // overlay acabou de abrir → redesenhar
                                 need_redraw = true;
                             }
