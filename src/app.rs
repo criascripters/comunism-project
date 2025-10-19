@@ -1,5 +1,5 @@
 use crate::scripts::{Executable, detectar_scripts};
-use crate::ui::term_overlay::TermOverlay;
+use crate::ui::term_overlay::{MessageOverlay, Overlay, TermOverlay};
 use std::collections::HashMap;
 use std::process::Command;
 
@@ -20,7 +20,7 @@ pub struct App {
     pub script_selecionado: usize, // índice do script real (não da UI)
     pub ui_state: ListState,
     pub sair: bool,
-    pub overlay: Option<TermOverlay>,
+    pub overlay: Option<Overlay>,
     tx: Sender<UiMsg>,
     rx: Receiver<UiMsg>,
 }
@@ -32,6 +32,10 @@ enum UiMsg {
         cols: u16,
         rows: u16,
         title: String,
+    },
+    ShowMessage {
+        title: String,
+        text: String,
     },
 }
 
@@ -105,7 +109,7 @@ impl App {
                         format!("{} (compilando...)", script.nome()),
                     )
                     .map_err(|e| format!("falha ao criar terminal: {e}"))?;
-                    self.overlay = Some(overlay_temp);
+                    self.overlay = Some(Overlay::Terminal(overlay_temp));
 
                     let cargs: Vec<String> = compile
                         .args
@@ -138,16 +142,47 @@ impl App {
 
                     let tx = self.tx.clone();
                     let title = script.nome().to_string();
+                    let compilador_cl = compilador.clone();
+                    let cargs_cl = cargs.clone();
 
                     std::thread::spawn(move || {
-                        if let Ok(status) = Command::new(&compilador).args(&cargs).status() {
-                            if status.success() {
-                                let _ = tx.send(UiMsg::SpawnOverlay {
-                                    cmd: cmd_res,
-                                    args: args_res,
-                                    cols,
-                                    rows,
-                                    title,
+                        match Command::new(&compilador_cl).args(&cargs_cl).output() {
+                            Ok(out) => {
+                                if out.status.success() {
+                                    let _ = tx.send(UiMsg::SpawnOverlay {
+                                        cmd: cmd_res,
+                                        args: args_res,
+                                        cols,
+                                        rows,
+                                        title,
+                                    });
+                                } else {
+                                    let err_text = format!(
+                                        "falha ao compilar (status: {:?})
+stdout:
+{}
+stderr:
+{}",
+                                        out.status.code(),
+                                        String::from_utf8_lossy(&out.stdout),
+                                        String::from_utf8_lossy(&out.stderr),
+                                    );
+                                    let _ = tx.send(UiMsg::ShowMessage {
+                                        title: "compilação falhou".to_string(),
+                                        text: err_text,
+                                    });
+                                }
+                            }
+                            Err(e) => {
+                                let err_text = format!(
+                                    "não consegui invocar o compilador
+comando: {} {:?}
+erro: {}",
+                                    compilador_cl, cargs_cl, e
+                                );
+                                let _ = tx.send(UiMsg::ShowMessage {
+                                    title: "erro ao invocar compilador".to_string(),
+                                    text: err_text,
                                 });
                             }
                         }
@@ -179,16 +214,23 @@ impl App {
                 };
 
                 let arg_refs: Vec<&str> = args_res.iter().map(|s| s.as_str()).collect();
-                let overlay = crate::ui::term_overlay::TermOverlay::spawn(
+                match crate::ui::term_overlay::TermOverlay::spawn(
                     &cmd_res,
                     &arg_refs,
                     cols,
                     rows,
                     script.nome(),
-                )
-                .map_err(|e| format!("falha ao criar terminal: {e}"))?;
-                self.overlay = Some(overlay);
-                return Ok(());
+                ) {
+                    Ok(overlay) => {
+                        self.overlay = Some(Overlay::Terminal(overlay));
+                    }
+                    Err(e) => {
+                        self.overlay = Some(Overlay::Message(MessageOverlay::new(
+                            "erro ao criar terminal",
+                            format!("{e}"),
+                        )));
+                    }
+                }
             }
 
             if let Some(auto) = atracao
@@ -201,18 +243,31 @@ impl App {
                         path = abs;
                     }
                 }
-                let args = vec![path.to_string_lossy().to_string()];
+                // separar go run em comando + subcomando (cuidado com isso se for adicionar novas langs)
+                let parts: Vec<&str> = auto.interpretador.split_whitespace().collect();
+                let cmd = parts.get(0).map(|s| s.to_string()).unwrap_or_default();
+                let mut args: Vec<String> =
+                    parts.iter().skip(1).map(|s| (*s).to_string()).collect();
+                args.push(path.to_string_lossy().to_string());
+
                 let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-                let overlay = crate::ui::term_overlay::TermOverlay::spawn(
-                    &auto.interpretador,
+                match crate::ui::term_overlay::TermOverlay::spawn(
+                    &cmd,
                     &arg_refs,
                     80,
                     24,
                     auto.nome(),
-                )
-                .map_err(|e| format!("falha ao criar terminal: {e}"))?;
-                self.overlay = Some(overlay);
-                return Ok(());
+                ) {
+                    Ok(overlay) => {
+                        self.overlay = Some(Overlay::Terminal(overlay));
+                    }
+                    Err(e) => {
+                        self.overlay = Some(Overlay::Message(MessageOverlay::new(
+                            "erro ao executar",
+                            format!("{e}"),
+                        )));
+                    }
+                }
             }
         }
 
@@ -234,9 +289,19 @@ impl App {
                     if let Ok(overlay) = crate::ui::term_overlay::TermOverlay::spawn(
                         &cmd, &arg_refs, cols, rows, title,
                     ) {
-                        self.overlay = Some(overlay);
+                        self.overlay = Some(Overlay::Terminal(overlay));
+                        changed = true;
+                    } else {
+                        self.overlay = Some(Overlay::Message(MessageOverlay::new(
+                            "erro ao abrir terminal",
+                            format!("comando: {} {:?}", cmd, args),
+                        )));
                         changed = true;
                     }
+                }
+                UiMsg::ShowMessage { title, text } => {
+                    self.overlay = Some(Overlay::Message(MessageOverlay::new(title, text)));
+                    changed = true;
                 }
             }
         }
