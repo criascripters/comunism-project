@@ -147,22 +147,17 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
     };
     frame.render_widget(instrucoes, area_instrucoes);
 
-    // renderiza o overlay de terminal se estiver ativo
-    if let Some(term) = &mut app.overlay {
-        // tamanho mínimo para a rosquinha (80x22) + bordas
+    // renderiza qualquer overlay (terminal ou mensagem)
+    if let Some(ov) = &mut app.overlay {
         let need_w = 80 + 2;
         let need_h = 22 + 2;
         let area = centered_rect(need_w, need_h, frame.area());
-
-        // se não couber, usa o máximo possível
         let final_area = if area.width < need_w || area.height < need_h {
             frame.area()
         } else {
             area
         };
-
-        // renderiza o terminal com margem para a borda
-        term.render(
+        ov.render(
             frame,
             final_area.inner(Margin {
                 horizontal: 1,
