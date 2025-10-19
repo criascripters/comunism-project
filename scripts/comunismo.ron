@@ -1,6 +1,6 @@
 Script(
     nome: "comunismo",
-    descricao: "uma foice e um martelo dançando na sua tela, cortesia de c. para o povo!",
+    descricao: "uma foice e um martelo dançando na sua tela, cortesia de c para o povo!",
     arquivo: "AQUIEHCOMUNISMO.c",
     compilar: Some(CompileStep(
         compilador: "cc",

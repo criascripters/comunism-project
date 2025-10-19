@@ -1,0 +1,10 @@
+Script(
+    nome: "bolsonaro 2026",
+    descricao: "gambalang apresenta: fogos de artificio em ascii!!",
+    arquivo: "fireworks.ga",
+    compilar: None,
+    executar: ExecuteStep(
+        comando: "cargo",
+        args: ["run", "-q", "-p", "gamba", "--", "{arquivo}"],
+    ),
+)

@@ -1,0 +1,239 @@
+// ------------------------------------------------------------
+// fireworks.gamba
+//
+// esse programa desenha fogos de artifício em ASCII no terminal,
+// usando somente funções puras, listas e pipes
+//
+// ao longo do codigo eu tento explicar asintaxe da linguagem gamba:
+// - atribuição imutável com nome :: expressão
+// - funções com fn ... { ... }
+// - listas com [a b c] (sem virgulas!)
+// - maps via map_from_pairs([[ "k" v ] ...])
+// - pipe x |> f aplica x como primeiro argumento de f
+// - when (cond) { então } { senão } é expressão condicional
+// - map/filter/reduce (alta ordem) recebem funções
+// - recursão com TCO (tail-call optimization) para loops
+//
+// nota que quase tudo retorna novos valores (estilo funcional)
+// efeitos colaterais existem (println, clear, sleep_ms), mas sao (hopefully) explícitos
+// ------------------------------------------------------------
+
+
+// ------------------------------------------------------------
+// constantes “globais” do programa (bindings imutáveis)
+// sintaxe: nome :: expressão
+// números podem ser inteiros (80) ou ponto flutuante (0.1)
+// ------------------------------------------------------------
+width   :: 80      // largura da “tela”
+height  :: 24      // altura da “tela” (número de linhas)
+gravity :: 0.1     // gravidade (aceleração em y)
+drag    :: 0.98    // arrasto (diminui a velocidade aos poucos)
+
+
+// ------------------------------------------------------------
+// listas em gamba: [item1 item2 item3] (sem virgulas!!)
+// cons(h, t) retorna uma nova lista com h na frente de t.
+// when (cond) { A } { B } escolhe entre dois blocos e devolve um valor
+// funçoes: fn x { corpo }  ou  fn(x) { corpo }
+// ------------------------------------------------------------
+
+// cria uma lista com w strings " " (um espaço), recursivamente
+create_row :: fn w {
+  when (w |> eq(0)) {           // comparação numérica: eq, lt, gt, ge, le
+    []                          // lista vazia
+  } {
+    cons(" ", create_row(w - 1))
+  }
+}
+
+// uma linha vazia padrão (largura 'width')
+screen_row :: create_row(width)
+
+// cria a “tela” (lista de linhas), com 'height' linhas
+create_screen :: fn h {
+  when (h |> eq(0)) {
+    []
+  } {
+    cons(screen_row, create_screen(h - 1))
+  }
+}
+
+// tela base (imutavel): lista de 'height' linhas, cada linha é uma lista de strings de 1 char
+screen :: create_screen(height)
+
+
+// ------------------------------------------------------------
+// booleanos: true/false; and/or/not
+// funções podem ter multiplos parametros com fn(x, y) { ... } ou tupla estilo fn x y { ... } (gamba aceita ambas formas)
+// aqui usa fn(x, y) por clareza
+// ------------------------------------------------------------
+in_bounds :: fn(x, y) {
+  // ge = >=, lt = <
+  x_ok :: and(x |> ge(0), x |> lt(width))
+  y_ok :: and(y |> ge(0), y |> lt(height))
+  and(x_ok, y_ok)
+}
+
+
+// ------------------------------------------------------------
+// maps (dicionários):
+// - cria com map_from_pairs, usando pares [ "chave" valor ]
+// - acessa com map_get(m, "k") (erro se a chave não existir)
+// - mida com map_set(m, "k", v) que devolve um novo map
+//
+// isso define a particula de foguinho de artificio com campos:
+// x, y (posição) | vx, vy (velocidade) | char (símbolo a desenhar)
+// ------------------------------------------------------------
+new_particle :: fn(x, y, vx, vy, char) {
+  map_from_pairs([
+    ["x" x] ["y" y] ["vx" vx] ["vy" vy] ["char" char]
+  ])
+}
+
+
+// ------------------------------------------------------------
+// pipe (|>): encadeia transformaçoes elegantes
+// a expressão a |> f(b) equivale a f(a, b)
+// dado um map p, posições e velocidades sao calculadas e atualizadas
+// cada map_set devolve um novo map; |> encadeia pra ficar legível
+// ------------------------------------------------------------
+update_particle :: fn p {
+  p |> map_set("x", (p |> map_get("x")) + (p |> map_get("vx")))
+    |> map_set("y", (p |> map_get("y")) + (p |> map_get("vy")))
+    |> map_set("vx", (p |> map_get("vx")) * drag)
+    |> map_set("vy", ((p |> map_get("vy")) * drag) + gravity)
+}
+
+
+// ------------------------------------------------------------
+// reduce(lista, acumulador_inicial, fn(acc, item) { ...acc_novo })
+// percorre a lista e “dobra” em um valor
+// isso printa as partículas na tela: para cada partícula p,
+// um caractere na matriz (lista de listas) se estiver dentro dos limites
+// screen_set(s, x, y, char) devolve uma nova tela com a célula alterada
+// floor(x) arredonda para baixo (para coordenadas de grade)
+// ------------------------------------------------------------
+draw_particles :: fn(screen, particles) {
+  reduce(particles, screen, fn(s, p) {
+    x :: floor(p |> map_get("x"))
+    y :: floor(p |> map_get("y"))
+    char :: p |> map_get("char")
+    when (in_bounds(x, y)) {
+      screen_set(s, x, y, char)
+    } { 
+      s
+    }
+  })
+}
+
+
+// ------------------------------------------------------------
+// rand() -> numero em [0, 1)
+// rand_int(n) -> inteiro em [0, n)
+// cos/sin em radianos
+// em explode, gera 'count' partículas saindo num círculo,
+// escolhendo angulo e velocidade aleatorios e um char entre "*", "+", ".", "@"
+// range(0, count) gera [0 1 2 ... count-1]; usa map para criar cada particula
+// ------------------------------------------------------------
+explode :: fn(x, y, count) {
+  range(0, count)
+    |> map(fn i {
+        angle :: rand() * 6.28
+        speed :: rand() * 2 + 0.5
+        char :: ["*" "+" "." "@"] |> at(rand_int(4))
+        new_particle(x, y, cos(angle) * speed, sin(angle) * speed, char)
+      })
+}
+
+
+// ------------------------------------------------------------
+// estado do sistema = lista de partículas
+// começa vazio :)
+// ------------------------------------------------------------
+initial_state :: []
+
+
+// ------------------------------------------------------------
+// update_state:
+// 1) move todas as partículas (map update_particle)
+// 2) filtra as que cairam muito alem da tela (y < height + 5)
+// 3) com pequena probabilidade, cria um “foguete” que sobe (char "^")
+// 4) quando o foguete “vira” (vy ~ -0.5), explode em várias partículas
+//    (note que explode devolve uma lista de partículas, por isso uso [p] ou explode(...))
+// 5) flatten achata a lista de listas em uma lista só
+// ------------------------------------------------------------
+update_state :: fn state {
+  new_state :: state
+    |> map(update_particle)
+    |> filter(fn p { (p |> map_get("y")) |> lt(height + 5) })
+
+  // usa when como expressão para decidir spawnar foguete
+  after_spawn :: when (rand() |> lt(0.05)) {
+    rocket_x  :: rand() * width
+    rocket_vx :: rand() * 2 - 1
+    rocket_vy :: -(rand() * 2 + 2)
+    push(new_state, new_particle(rocket_x, height - 1, rocket_vx, rocket_vy, "^"))
+  } { 
+    new_state 
+  }
+
+  // para cada partícula, se for foguete e estiver “no pico”, vira uma explosão
+  // caso contrario, mantem a partícula como lista singleton [p]
+  after_spawn
+    |> map(fn p {
+      is_rocket  :: (p |> map_get("char")) |> eq("^")
+      is_peaking :: (p |> map_get("vy"))   |> gt(-0.5)
+      when (is_rocket |> and(is_peaking)) {
+        explode(p |> map_get("x"), p |> map_get("y"), 50)
+      } { 
+        [p] 
+      }
+    })
+    |> flatten
+}
+
+
+// ------------------------------------------------------------
+// render: transforma a tela (lista de listas de strings 1-char) em uma string grande
+// - limpamos a tela com clear()
+// - para cada linha, o codigo junta os caracteres com "" (sem separador)
+// - depois o codigo junta as linhas com "
+// " para formar o “quadro” completo
+// - println imprime o quadro
+// ------------------------------------------------------------
+render :: fn screen_data {
+  clear()
+  screen_data
+    |> map(fn row { join(row, "") })
+    |> join("
+")
+    |> println
+  flush()
+}
+
+
+// ------------------------------------------------------------
+// loop principal:
+// - calcula novo estado
+// - desenha
+// - pausa 30ms
+// - chama a si mesmo com o novo estado
+//
+// importante: a linguagem tem TCO (tail-call optimization), 
+// então essa recursao em cauda não cresce a pilha e funciona tipo um loop
+// ------------------------------------------------------------
+main_loop :: fn state {
+  new_state :: update_state(state)
+  render(draw_particles(screen, new_state))
+  sleep_ms(30)
+  main_loop(new_state)   // chamada em cauda => trampolim (sem stack overflow)
+}
+
+
+// ------------------------------------------------------------
+// inicio do programa
+// sleep_ms(2000) = pequena espera antes de começar
+// ctrl + c interrompe
+// ------------------------------------------------------------
+sleep_ms(2000)
+main_loop(initial_state)

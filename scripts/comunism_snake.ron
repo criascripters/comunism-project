@@ -1,0 +1,9 @@
+Script(
+    nome: "che cobrara",
+    descricao: "jogo da cobrinha revolucionária escrito em go! devore o capitalismo com W/A/S/D",
+    arquivo: "comunism_snake.go",
+    executar: ExecuteStep(
+        comando: "go",
+        args: ["run", "{arquivo}"],
+    ),
+)

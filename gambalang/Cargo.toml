@@ -1,0 +1,12 @@
+[package]
+name = "gamba"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Gamba: uma linguagem funcional com pipes e I/O forte para CLIs"
+
+[lib]
+name = "gamba"
+path = "src/lib.rs"
+
+[dependencies]

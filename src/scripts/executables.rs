@@ -2,8 +2,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 
-use std::process::Command;
-
 // contrato que define as características de um arquivo a ser executado
 pub trait Executable {
     // nome que aparece no menu
@@ -11,9 +9,6 @@ pub trait Executable {
 
     // descricao safada sobre o que faz
     fn descricao(&self) -> &str;
-
-    // a magica (que pode dar errado ou não), por isso é result
-    fn execute(&self) -> Result<(), String>;
 
     // permite verificar o tipo concreto em tempo de execução
     fn as_any(&self) -> &dyn std::any::Any;
@@ -52,52 +47,6 @@ impl Executable for Script {
         &self.descricao
     }
 
-    fn execute(&self) -> Result<(), String> {
-        // variáveis que podem ser substituídas nos comandos
-        let mut vars = HashMap::new();
-        vars.insert("arquivo".to_string(), self.arquivo.clone());
-
-        // se precisa compilar, compila primeiro
-        if let Some(compile) = &self.compilar {
-            println!("compilando {}...", self.arquivo);
-
-            vars.insert("output".to_string(), compile.output.clone());
-
-            let args: Vec<String> = compile
-                .args
-                .iter()
-                .map(|arg| substituir_vars(arg, &vars))
-                .collect();
-
-            let status = Command::new(&compile.compilador)
-                .args(&args)
-                .status()
-                .map_err(|e| format!("falha ao compilar: {}", e))?;
-
-            if !status.success() {
-                return Err(format!("compilação de {} falhou", self.arquivo));
-            }
-        }
-
-        println!("executando {}... pressione ctrl+c para parar.", self.nome);
-
-        // substitui variáveis no comando de execução
-        let comando = substituir_vars(&self.executar.comando, &vars);
-        let args: Vec<String> = self
-            .executar
-            .args
-            .iter()
-            .map(|arg| substituir_vars(arg, &vars))
-            .collect();
-
-        Command::new(&comando)
-            .args(&args)
-            .status()
-            .map_err(|e| format!("falha ao executar: {}", e))?;
-
-        Ok(())
-    }
-
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -114,6 +63,16 @@ static INTERPRETERS: &[(&str, &str, &str)] = &[
         "rustc",
         "rust (leia-se: melhor linguagem já inventada)",
     ),
+    ("pl", "perl", "perl 𓀀 𓀁 𓀂 𓀃 𓀄 𓀅 𓀆 𓀇 𓀈 𓀉 𓀊 𓀋 "),
+    ("hs", "runhaskell", "haskell (alguem usa isso sem meme?)"),
+    ("go", "go run", "golang (mindset avançado de dev senior)"),
+    (
+        "lua",
+        "lua",
+        "lua minguante, lua crescente... declaro ser o seu mais lindo amante",
+    ),
+    ("pro", "swipl", "prolog (quem colocou isso aqui?)"),
+    ("ga", "gamba", "gambalang :p"),
 ];
 
 pub struct ScriptNaoOficial {
@@ -130,18 +89,6 @@ impl Executable for ScriptNaoOficial {
 
     fn descricao(&self) -> &str {
         &self.descricao
-    }
-
-    fn execute(&self) -> Result<(), String> {
-        println!("executando script não-oficial: {}", self.arquivo);
-        println!("pressione ctrl+c para parar.");
-
-        Command::new(&self.interpretador)
-            .arg(&self.arquivo)
-            .status()
-            .map_err(|e| format!("falha ao executar: {}", e))?;
-
-        Ok(())
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -175,7 +122,6 @@ pub fn detectar_scripts() -> Vec<Box<dyn Executable>> {
         }
     }
 
-    // 2. auto-detecta scripts soltos na raiz
     // 2. auto-detecta scripts soltos na raiz (modo bagunça)
     if let Ok(entries) = fs::read_dir(".") {
         for entry in entries.flatten() {
@@ -217,7 +163,7 @@ pub fn detectar_scripts() -> Vec<Box<dyn Executable>> {
     executaveis
 }
 
-fn substituir_vars(template: &str, vars: &HashMap<String, String>) -> String {
+pub fn substituir_vars(template: &str, vars: &HashMap<String, String>) -> String {
     let mut resultado = template.to_string();
     for (key, value) in vars {
         resultado = resultado.replace(&format!("{{{}}}", key), value);

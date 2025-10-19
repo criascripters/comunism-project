@@ -37,7 +37,7 @@ e pronto! navegue com as setinhas, aperte `enter` pra executar e `q` pra sair.
 
 ## como adicionar sua própria bagunça
 
-existem duas maneiras de contribuir para a anarquia:
+existem 2.1 maneiras de contribuir para a anarquia:
 
 ### 1. o jeito oficial (oficializado por: eu mesmo)
 
@@ -51,7 +51,7 @@ só joga o seu arquivo `.js`, `.py`, `.sh` ou `.rs` na raiz do projeto.
 
 o painel vai farejar ele, dar um nome automático e adicionar na lista de "perdidos no root". simples assim. sem burocracia.
 
-### 2. o jeito foda-se
+### 2.1 o jeito foda-se
 
 teoricamente você pode tacar qualquer coisa nesse repositório. se quiser fazer uma bet vai fundo
 
