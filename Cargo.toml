@@ -14,3 +14,4 @@ portable-pty = "0.8"
 vt100 = "0.15"
 crossbeam-channel = "0.5"
 anyhow = "1.0"
+gambalang = { path = "gambalang" }
