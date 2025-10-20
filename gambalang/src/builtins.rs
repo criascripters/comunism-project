@@ -36,7 +36,7 @@ where
 fn arity(name: &str, args: &[Value], expected: usize) -> Result<(), GambaError> {
     if args.len() != expected {
         return Err(GambaError::runtime(format!(
-            "{}: aridade inválida (esperado {}, recebido {})",
+            "a função {} esperava {} argumentos, mas recebeu {}",
             name,
             expected,
             args.len()
@@ -46,7 +46,6 @@ fn arity(name: &str, args: &[Value], expected: usize) -> Result<(), GambaError> 
 }
 
 pub fn install_builtins(env: &Env) {
-
     // I/O
     builtin_many(env, "print", |_env, args| {
         arity("print", args, 1)?;
@@ -96,7 +95,7 @@ pub fn install_builtins(env: &Env) {
     });
     builtin_many(env, "sleep_ms", |_env, args| {
         arity("sleep_ms", args, 1)?;
-        let ms = expect_number(&args[0])?;
+        let ms = expect_number_in("sleep_ms", &args[0])?;
         thread::sleep(Duration::from_millis(ms as u64));
         Ok(Value::Unit)
     });
@@ -108,7 +107,7 @@ pub fn install_builtins(env: &Env) {
     // eval: avalia uma string de código gamba no ambiente atual
     builtin_many(env, "eval", |env, args| {
         arity("eval", args, 1)?;
-        let src = expect_string(&args[0])?;
+        let src = expect_string_in("eval", &args[0])?;
         let mut lx = lexer::Lexer::new(&src);
         let tokens = lx.tokenize()?;
         let mut p = parser::Parser::new(tokens);
@@ -119,7 +118,7 @@ pub fn install_builtins(env: &Env) {
     // try_eval: avalia código e captura erros; retorna um map {ok: bool, value: v} ou {ok: false, error: "msg"}
     builtin_many(env, "try_eval", |env, args| {
         arity("try_eval", args, 1)?;
-        let src = expect_string(&args[0])?;
+        let src = expect_string_in("try_eval", &args[0])?;
         let mut out = HashMap::new();
         let res = (|| {
             let mut lx = lexer::Lexer::new(&src);
@@ -145,7 +144,7 @@ pub fn install_builtins(env: &Env) {
     // erro explícito (útil p/ cancelar loops como forever)
     builtin_many(env, "error", |_env, args| {
         arity("error", args, 1)?;
-        let msg = expect_string(&args[0])?;
+        let msg = expect_string_in("error", &args[0])?;
         Err(GambaError::runtime(msg))
     });
 
@@ -164,11 +163,11 @@ pub fn install_builtins(env: &Env) {
     });
 
     // numericos
-    builtin_many(env, "add", |_env, a| bin_num(a, |x, y| x + y));
-    builtin_many(env, "sub", |_env, a| bin_num(a, |x, y| x - y));
-    builtin_many(env, "mult", |_env, a| bin_num(a, |x, y| x * y));
-    builtin_many(env, "div", |_env, a| bin_num(a, |x, y| x / y));
-    builtin_many(env, "mod", |_env, a| bin_num(a, |x, y| x % y));
+    builtin_many(env, "add", |_env, a| bin_num("add", a, |x, y| x + y));
+    builtin_many(env, "sub", |_env, a| bin_num("sub", a, |x, y| x - y));
+    builtin_many(env, "mult", |_env, a| bin_num("mult", a, |x, y| x * y));
+    builtin_many(env, "div", |_env, a| bin_num("div", a, |x, y| x / y));
+    builtin_many(env, "mod", |_env, a| bin_num("mod", a, |x, y| x % y));
 
     builtin_many(env, "eq", |_env, args| Ok(Value::Bool(equals(&args)?)));
     builtin_many(env, "gt", |_env, args| {
@@ -212,7 +211,7 @@ pub fn install_builtins(env: &Env) {
     });
     builtin_many(env, "rand_int", |_env, args| {
         arity("rand_int", args, 1)?;
-        let max = expect_number(&args[0])? as i64;
+        let max = expect_number_in("rand_int", &args[0])? as i64;
         if max <= 0 {
             return Err(GambaError::runtime("rand_int: max deve ser > 0"));
         }
@@ -232,7 +231,7 @@ pub fn install_builtins(env: &Env) {
     });
     builtin_many(env, "push", |_env, args| {
         arity("push", args, 2)?;
-        let mut xs = expect_list(&args[0])?;
+        let mut xs = expect_list_in("push", &args[0])?;
         xs.push(args[1].clone());
         Ok(Value::List(xs))
     });
@@ -261,8 +260,8 @@ pub fn install_builtins(env: &Env) {
     });
     builtin_many(env, "join", |_env, args| {
         arity("join", args, 2)?;
-        let xs = expect_list(&args[0])?;
-        let sep = expect_string(&args[1])?;
+        let xs = expect_list_in("join", &args[0])?;
+        let sep = expect_string_in("join", &args[1])?;
         let mut out = String::new();
         for (i, v) in xs.iter().enumerate() {
             if i > 0 {
@@ -273,10 +272,10 @@ pub fn install_builtins(env: &Env) {
         Ok(Value::String(out))
     });
 
-    // Listas básicas
+    // listas basicas
     builtin_many(env, "first", |_env, args| {
         arity("first", args, 1)?;
-        let xs = expect_list(&args[0])?;
+        let xs = expect_list_in("first", &args[0])?;
         if xs.is_empty() {
             return Err(GambaError::runtime("first: lista vazia"));
         }
@@ -285,7 +284,7 @@ pub fn install_builtins(env: &Env) {
 
     builtin_many(env, "rest", |_env, args| {
         arity("rest", args, 1)?;
-        let xs = expect_list(&args[0])?;
+        let xs = expect_list_in("rest", &args[0])?;
         if xs.len() <= 1 {
             Ok(Value::List(vec![]))
         } else {
@@ -295,16 +294,16 @@ pub fn install_builtins(env: &Env) {
 
     builtin_many(env, "cons", |_env, args| {
         arity("cons", args, 2)?;
-        let mut xs = expect_list(&args[1])?;
+        let mut xs = expect_list_in("cons", &args[1])?;
         xs.insert(0, args[0].clone());
         Ok(Value::List(xs))
     });
 
-    // Strings
+    // strings
     builtin_many(env, "char_at", |_env, args| {
         arity("char_at", args, 2)?;
-        let s = expect_string(&args[0])?;
-        let idx = expect_number(&args[1])?;
+        let s = expect_string_in("char_at", &args[0])?;
+        let idx = expect_number_in("char_at", &args[1])?;
         if idx < 0.0 || idx.fract() != 0.0 {
             return Err(GambaError::runtime("char_at: índice deve ser inteiro >= 0"));
         }
@@ -317,14 +316,14 @@ pub fn install_builtins(env: &Env) {
 
     builtin_many(env, "string_to_list", |_env, args| {
         arity("string_to_list", args, 1)?;
-        let s = expect_string(&args[0])?;
+        let s = expect_string_in("string_to_list", &args[0])?;
         let xs: Vec<Value> = s.chars().map(|c| Value::String(c.to_string())).collect();
         Ok(Value::List(xs))
     });
 
     builtin_many(env, "string_to_number", |_env, args| {
         arity("string_to_number", args, 1)?;
-        let s = expect_string(&args[0])?;
+        let s = expect_string_in("string_to_number", &args[0])?;
         match s.trim().parse::<f64>() {
             Ok(n) => Ok(Value::Number(n)),
             Err(_) => Err(GambaError::runtime("string_to_number: string inválida")),
@@ -333,8 +332,8 @@ pub fn install_builtins(env: &Env) {
 
     builtin_many(env, "at", |_env, args| {
         arity("at", args, 2)?;
-        let xs = expect_list(&args[0])?;
-        let idx = expect_number(&args[1])?;
+        let xs = expect_list_in("at", &args[0])?;
+        let idx = expect_number_in("at", &args[1])?;
         if idx < 0.0 || idx.fract() != 0.0 {
             return Err(GambaError::runtime("at: índice deve ser inteiro >= 0"));
         }
@@ -345,28 +344,28 @@ pub fn install_builtins(env: &Env) {
         Ok(xs[i].clone())
     });
 
-    // Funções matemáticas
+    // funções matemáticas
     builtin_many(env, "cos", |_env, args| {
         arity("cos", args, 1)?;
-        let x = expect_number(&args[0])?;
+        let x = expect_number_in("cos", &args[0])?;
         Ok(Value::Number(x.cos()))
     });
 
     builtin_many(env, "sin", |_env, args| {
         arity("sin", args, 1)?;
-        let x = expect_number(&args[0])?;
+        let x = expect_number_in("sin", &args[0])?;
         Ok(Value::Number(x.sin()))
     });
 
     builtin_many(env, "floor", |_env, args| {
         arity("floor", args, 1)?;
-        let x = expect_number(&args[0])?;
+        let x = expect_number_in("floor", &args[0])?;
         Ok(Value::Number(x.floor()))
     });
 
     builtin_many(env, "flatten", |_env, args| {
         arity("flatten", args, 1)?;
-        let xs = expect_list(&args[0])?;
+        let xs = expect_list_in("flatten", &args[0])?;
         let mut result = Vec::new();
         for item in xs {
             match item {
@@ -381,7 +380,7 @@ pub fn install_builtins(env: &Env) {
         Ok(Value::List(result))
     });
 
-    // Map / Dict (chaves string)
+    // map / dict (chaves string)
     builtin_many(env, "map_new", |_env, args| {
         arity("map_new", args, 0)?;
         Ok(Value::Map(HashMap::new()))
@@ -390,15 +389,15 @@ pub fn install_builtins(env: &Env) {
     // pega com valor padrao: map_get_or(map, "k", default)
     builtin_many(env, "map_get_or", |_env, args| {
         arity("map_get_or", args, 3)?;
-        let m = expect_map(&args[0])?;
-        let k = expect_string(&args[1])?;
+        let m = expect_map_in("map_get_or", &args[0])?;
+        let k = expect_string_in("map_get_or", &args[1])?;
         Ok(m.get(&k).cloned().unwrap_or(args[2].clone()))
     });
 
     builtin_many(env, "map_get", |_env, args| {
         arity("map_get", args, 2)?;
-        let m = expect_map(&args[0])?;
-        let k = expect_string(&args[1])?;
+        let m = expect_map_in("map_get", &args[0])?;
+        let k = expect_string_in("map_get", &args[1])?;
         match m.get(&k) {
             Some(v) => Ok(v.clone()),
             None => Err(GambaError::runtime("map_get: chave não encontrada")),
@@ -407,15 +406,15 @@ pub fn install_builtins(env: &Env) {
 
     builtin_many(env, "map_has", |_env, args| {
         arity("map_has", args, 2)?;
-        let m = expect_map(&args[0])?;
-        let k = expect_string(&args[1])?;
+        let m = expect_map_in("map_has", &args[0])?;
+        let k = expect_string_in("map_has", &args[1])?;
         Ok(Value::Bool(m.contains_key(&k)))
     });
 
     builtin_many(env, "map_set", |_env, args| {
         arity("map_set", args, 3)?;
-        let mut m = expect_map(&args[0])?;
-        let k = expect_string(&args[1])?;
+        let mut m = expect_map_in("map_set", &args[0])?;
+        let k = expect_string_in("map_set", &args[1])?;
         let v = args[2].clone();
         m.insert(k, v);
         Ok(Value::Map(m))
@@ -442,12 +441,12 @@ pub fn install_builtins(env: &Env) {
     // cria map a partir de lista de pares: [["k" v] ["x" y]]
     builtin_many(env, "map_from_pairs", |_env, args| {
         arity("map_from_pairs", args, 1)?;
-        let pairs = expect_list(&args[0])?;
+        let pairs = expect_list_in("map_from_pairs", &args[0])?;
         let mut m = HashMap::new();
         for p in pairs {
             match p {
                 Value::List(items) if items.len() == 2 => {
-                    let key = expect_string(&items[0])?;
+                    let key = expect_string_in("map_from_pairs", &items[0])?;
                     let val = items[1].clone();
                     m.insert(key, val);
                 }
@@ -463,10 +462,10 @@ pub fn install_builtins(env: &Env) {
 
     builtin_many(env, "screen_set", |_env, args| {
         arity("screen_set", args, 4)?;
-        let mut screen = expect_list(&args[0])?;
-        let x = expect_number(&args[1])?;
-        let y = expect_number(&args[2])?;
-        let char = expect_string(&args[3])?;
+        let mut screen = expect_list_in("screen_set", &args[0])?;
+        let x = expect_number_in("screen_set", &args[1])?;
+        let y = expect_number_in("screen_set", &args[2])?;
+        let char = expect_string_in("screen_set", &args[3])?;
 
         if x < 0.0 || y < 0.0 || x.fract() != 0.0 || y.fract() != 0.0 {
             return Err(GambaError::runtime(
@@ -505,7 +504,7 @@ pub fn install_builtins(env: &Env) {
     // alta ordem: map/filter/reduce executam lambdas por interpreter
     builtin_many(env, "map", |env, args| {
         arity("map", args, 2)?;
-        let xs = expect_list(&args[0])?;
+        let xs = expect_list_in("map", &args[0])?;
         let f_impl = expect_func(&args[1])?;
         let f_val = Value::Func(f_impl);
         let mut out = Vec::with_capacity(xs.len());
@@ -518,7 +517,7 @@ pub fn install_builtins(env: &Env) {
 
     builtin_many(env, "filter", |env, args| {
         arity("filter", args, 2)?;
-        let xs = expect_list(&args[0])?;
+        let xs = expect_list_in("filter", &args[0])?;
         let f_impl = expect_func(&args[1])?;
         let f_val = Value::Func(f_impl);
         let mut out = Vec::new();
@@ -533,7 +532,7 @@ pub fn install_builtins(env: &Env) {
 
     builtin_many(env, "reduce", |env, args| {
         arity("reduce", args, 3)?;
-        let xs = expect_list(&args[0])?;
+        let xs = expect_list_in("reduce", &args[0])?;
         let mut acc = args[1].clone();
         let f_impl = expect_func(&args[2])?;
         let f_val = Value::Func(f_impl);
@@ -541,6 +540,39 @@ pub fn install_builtins(env: &Env) {
             acc = interpreter::call_value(env, f_val.clone(), vec![acc, x])?;
         }
         Ok(acc)
+    });
+
+    // repeat: aplica f ao valor n vezes. uso: x |> repeat(f, n)  ou repeat(x, f, n)
+    builtin_many(env, "repeat", |env, args| {
+        arity("repeat", args, 3)?;
+        let mut acc = args[0].clone();
+        let f_impl = expect_func(&args[1])?;
+        let f_val = Value::Func(f_impl);
+        let n = expect_number_in("repeat", &args[2])?;
+        if n < 0.0 || n.fract() != 0.0 {
+            return Err(GambaError::runtime(format!(
+                "a função repeat esperava um inteiro >= 0 como 3º argumento, mas recebeu {}",
+                args[2].type_name()
+            )));
+        }
+        let times = n as usize;
+        for _ in 0..times {
+            acc = interpreter::call_value(env, f_val.clone(), vec![acc])?;
+        }
+        Ok(acc)
+    });
+
+    // each: itera pela lista e aplica a função (pra side-effects), retorna Unit
+    // Uso: xs |> each(fn x { println(x) })
+    builtin_many(env, "each", |env, args| {
+        arity("each", args, 2)?;
+        let xs = expect_list_in("each", &args[0])?;
+        let f_impl = expect_func(&args[1])?;
+        let f_val = Value::Func(f_impl);
+        for x in xs {
+            let _ = interpreter::call_value(env, f_val.clone(), vec![x])?;
+        }
+        Ok(Value::Unit)
     });
 
     // forever: laço infinito controlado em rust (nao cresce a pilha)
@@ -559,39 +591,101 @@ pub fn install_builtins(env: &Env) {
 fn expect_number(v: &Value) -> Result<f64, GambaError> {
     match v {
         Value::Number(n) => Ok(*n),
-        _ => Err(GambaError::runtime("esperado número")),
+        _ => Err(GambaError::runtime(format!(
+            "esperado número, mas recebeu {}",
+            v.type_name()
+        ))),
+    }
+}
+
+fn expect_number_in(name: &str, v: &Value) -> Result<f64, GambaError> {
+    match v {
+        Value::Number(n) => Ok(*n),
+        _ => Err(GambaError::runtime(format!(
+            "{}: esperado Number, mas recebeu {}",
+            name,
+            v.type_name()
+        ))),
     }
 }
 fn expect_bool(v: &Value) -> Result<bool, GambaError> {
     match v {
         Value::Bool(b) => Ok(*b),
-        _ => Err(GambaError::runtime("esperado bool")),
+        _ => Err(GambaError::runtime(format!(
+            "esperado bool, mas recebeu {}",
+            v.type_name()
+        ))),
+    }
+}
+fn expect_bool_in(name: &str, v: &Value) -> Result<bool, GambaError> {
+    match v {
+        Value::Bool(b) => Ok(*b),
+        _ => Err(GambaError::runtime(format!(
+            "{}: esperado Bool, mas recebeu {}",
+            name,
+            v.type_name()
+        ))),
     }
 }
 fn expect_string(v: &Value) -> Result<String, GambaError> {
     match v {
         Value::String(s) => Ok(s.clone()),
-        _ => Err(GambaError::runtime("esperado string")),
+        _ => Err(GambaError::runtime(format!(
+            "esperado string, mas recebeu {}",
+            v.type_name()
+        ))),
+    }
+}
+fn expect_string_in(name: &str, v: &Value) -> Result<String, GambaError> {
+    match v {
+        Value::String(s) => Ok(s.clone()),
+        _ => Err(GambaError::runtime(format!(
+            "{}: esperado String, mas recebeu {}",
+            name,
+            v.type_name()
+        ))),
     }
 }
 fn expect_list(v: &Value) -> Result<Vec<Value>, GambaError> {
     match v {
         Value::List(xs) => Ok(xs.clone()),
-        _ => Err(GambaError::runtime("esperado lista")),
+        _ => Err(GambaError::runtime(format!(
+            "esperado lista, mas recebeu {}",
+            v.type_name()
+        ))),
+    }
+}
+fn expect_list_in(name: &str, v: &Value) -> Result<Vec<Value>, GambaError> {
+    match v {
+        Value::List(xs) => Ok(xs.clone()),
+        _ => Err(GambaError::runtime(format!(
+            "{}: esperado List, mas recebeu {}. dica: chame {}(lista, ...) ou use pipe: xs |> {} ...",
+            name,
+            v.type_name(),
+            name,
+            name
+        ))),
     }
 }
 fn expect_two_numbers(args: &[Value]) -> Result<(f64, f64), GambaError> {
     if args.len() != 2 {
-        return Err(GambaError::runtime("esperados 2 numeros"));
+        return Err(GambaError::runtime(format!(
+            "esta função esperava 2 argumentos, mas recebeu {}",
+            args.len()
+        )));
     }
     Ok((expect_number(&args[0])?, expect_number(&args[1])?))
 }
-fn bin_num<F>(args: &[Value], op: F) -> Result<Value, GambaError>
+fn bin_num<F>(name: &str, args: &[Value], op: F) -> Result<Value, GambaError>
 where
     F: Fn(f64, f64) -> f64,
 {
     if args.len() != 2 {
-        return Err(GambaError::runtime("esperados 2 numeros"));
+        return Err(GambaError::runtime(format!(
+            "a função {} esperava 2 argumentos, mas recebeu {}",
+            name,
+            args.len()
+        )));
     }
     Ok(Value::Number(op(
         expect_number(&args[0])?,
@@ -601,7 +695,10 @@ where
 
 fn equals(args: &[Value]) -> Result<bool, GambaError> {
     if args.len() != 2 {
-        return Err(GambaError::runtime("eq espera 2 argumentos"));
+        return Err(GambaError::runtime(format!(
+            "a função eq esperava 2 argumentos, mas recebeu {}",
+            args.len()
+        )));
     }
     Ok(eq_value(&args[0], &args[1]))
 }
@@ -635,5 +732,15 @@ fn expect_map(v: &Value) -> Result<HashMap<String, Value>, GambaError> {
     match v {
         Value::Map(m) => Ok(m.clone()),
         _ => Err(GambaError::runtime("Esperado map/dict")),
+    }
+}
+fn expect_map_in(name: &str, v: &Value) -> Result<HashMap<String, Value>, GambaError> {
+    match v {
+        Value::Map(m) => Ok(m.clone()),
+        _ => Err(GambaError::runtime(format!(
+            "{}: esperado Map/Dict, mas recebeu {}",
+            name,
+            v.type_name()
+        ))),
     }
 }

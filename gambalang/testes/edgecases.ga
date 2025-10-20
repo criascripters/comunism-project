@@ -1,0 +1,180 @@
+// testes/edgecases.ga
+
+// Helpers
+assert_eq :: fn(name, got, want) {
+  ok :: eq(got, want)
+  when (ok) {
+    println("[ok]   " + name)
+    1
+  } {
+    println("[FAIL] " + name + "  got=" + to_string(got) + "  want=" + to_string(want))
+    0
+  }
+}
+
+assert_true :: fn(name, cond) {
+  when (cond) {
+    println("[ok]   " + name)
+    1
+  } {
+    println("[FAIL] " + name + "  cond=false")
+    0
+  }
+}
+
+// testa apenas se nao dá erro (ok=true em try_eval)
+assert_ok_eval :: fn(name, code_str) {
+  r :: try_eval(code_str)
+  ok :: r |> map_get("ok")
+  when (ok) {
+    println("[ok]   " + name)
+    1
+  } {
+    err :: r |> map_get("error")
+    println("[FAIL] " + name + "  err=" + err)
+    0
+  }
+}
+
+// testa igualdade do resultado de um snippet
+assert_eq_eval :: fn(name, code_str, want) {
+  r :: try_eval(code_str)
+  ok :: r |> map_get("ok")
+  when (ok) {
+    val :: r |> map_get("value")
+    assert_eq(name, val, want)
+  } {
+    err :: r |> map_get("error")
+    println("[FAIL] " + name + "  err=" + err)
+    0
+  }
+}
+
+results :: []
+
+// 1) basicos
+results :: push(results, assert_eq("aritmética", 3 + 4 * 2, 11))
+results :: push(results, assert_eq("concat string", "ga" + "mba", "gamba"))
+results :: push(results, assert_eq("unário -", -1 + 2, 1))
+results :: push(results, assert_eq("== binário", (1 == 1), true))
+
+// 2) listas
+results :: push(results, assert_eq("lista com vírgulas opcionais", [1, 2  , 3], [1 2 3]))
+results :: push(results, assert_eq("range asc", range(0, 4), [0 1 2 3]))
+results :: push(results, assert_eq("range desc", range(4, 1), [3 2 1]))
+
+// 3) maps
+results :: push(results, assert_eq("map get/set",
+  map_get(map_set(map_from_pairs([["x" 1]]), "y", 2), "y"),
+  2))
+results :: push(results, assert_eq("map_get_or inexistente",
+  map_get_or(map_from_pairs([["x" 1]]), "z", 99),
+  99))
+
+// 4) alta ordem
+results :: push(results, assert_eq("map duplica",
+  [1 2 3] |> map(fn x { x * 2 }),
+  [2 4 6]))
+results :: push(results, assert_eq("filter >1",
+  [1 2 3] |> filter(fn x { x |> gt(1) }),
+  [2 3]))
+results :: push(results, assert_eq("reduce soma",
+  reduce([1 2 3 4], 0, fn(acc, x) { acc + x }),
+  10))
+
+// 5) bar-lambda e pipes multi-linha
+results :: push(results, assert_eq("filter com bar-lambda",
+  [1 2 3] |> filter |x| { x |> gt(1) },
+  [2 3]))
+results :: push(results, assert_eq("pipe quebra-linha em add",
+  { 10 |> add
+    5 },
+  15))
+
+// 6) vazamento no RHS do pipe (não devia ocorrer)
+results :: push(results, assert_ok_eval("println seguido de flush em nova linha",
+  "\"ok\" |> println
+flush()"))
+results :: push(results, assert_eq_eval("eq no RHS do pipe não engole próximo let",
+  "x :: 1
+res :: x |> eq(1)
+y :: 2
+res",
+  true))
+results :: push(results, assert_eq_eval("chamada com parênteses no RHS não engole próxima linha",
+  "{ 10 |> add(5)
+  2
+}",
+  2))
+
+// 7) variantes de when
+results :: push(results, assert_eq("when sem parênteses", when true { 1 } { 2 }, 1))
+results :: push(results, assert_eq("when com parênteses", when (true) { 1 } { 2 }, 1))
+results :: push(results, assert_eq("group (when cond) {..}{..}",
+  (when true) { 1 } { 2 }, 1))
+results :: push(results, assert_eq("group (when cond {..}{..})",
+  (when true { 1 } { 2 }), 1))
+
+// 8) nova semantica de let
+results :: push(results, assert_eq_eval("let rec por padrão (fatorial)",
+  "fact :: fn n { when (eq(n, 0)) { 1 } { n * fact(n - 1) } }
+fact(5)",
+  120))
+results :: push(results, assert_eq_eval("rebind lê valor anterior no RHS",
+  "x :: 10
+x :: x + 1
+x",
+  11))
+
+// 9) recursao mútua (definições separadas, ordem diferente)
+results :: push(results, assert_eq_eval("recursão mútua simples",
+  "a :: fn n { when (eq(n,0)) { 0 } { b(n - 1) + 1 } }
+\
+   b :: fn n { when (eq(n,0)) { 0 } { a(n - 1) + 1 } }
+\
+   a(4)",
+  4))
+
+// 10) eval/try_eval
+results :: push(results, assert_eq("eval em ambiente atual",
+  eval("u :: 7
+u + 5"), 12))
+results :: push(results, assert_ok_eval("try_eval captura erro",
+  "len(123)"))
+
+// 11) strings utilitárias
+results :: push(results, assert_eq("string_to_list + join",
+  string_to_list("abc") |> join(","),
+  "a,b,c"))
+results :: push(results, assert_eq("char_at fora do range -> \"\"",
+  char_at("hi", 9),
+  ""))
+
+// 12) repeat/each
+results :: push(results, assert_eq("repeat increment",
+  10 |> repeat(fn z { z + 1 }, 3),
+  13))
+
+// 13) at e flatten
+results :: push(results, assert_eq("at pega índice",
+  at([10 20 30], 1),
+  20))
+results :: push(results, assert_eq("flatten achata um nível",
+  flatten([[1 2] [3] 4 [5]]),
+  [1 2 3 4 5]))
+
+// 14) unary minus em arg (garantido com parenteses)
+results :: push(results, assert_eq("chamada com arg negativo (parênteses)",
+  add(-1, 3),
+  2))
+
+// 15) pipe para lambda nu
+results :: push(results, assert_eq("pipe em lambda nu",
+  5 |> (fn z { z * 3 }),
+  15))
+
+// sumário
+total :: len(results)
+passed :: reduce(results, 0, fn(acc, x) { acc + x })
+println("")
+println("Resumo: " + to_string(passed) + "/" + to_string(total) + " passaram")

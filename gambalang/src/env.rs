@@ -124,6 +124,18 @@ impl Env {
         }
         None
     }
+
+    // verifica se um nome existe no escopo atual (nao olha parent)
+    // util pra decidir se um let é primeira definição (predeclare) ou rebind
+    pub fn contains_local(&self, name: &str) -> bool {
+        self.0.values.borrow().contains_key(name)
+    }
+
+    // pre declara um nome com Unit no escopo atual (pra let rec/forward ref)
+    // seguro e O(1)
+    pub fn predeclare(&self, name: String) {
+        self.0.values.borrow_mut().insert(name, Value::Unit);
+    }
 }
 
 pub struct Runtime {

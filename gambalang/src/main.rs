@@ -53,7 +53,7 @@ fn main() {
                 i += 1;
             }
             "-" => {
-                // "-" tratado como "script do stdin"
+                // "-" tratado como script do stdin
                 if script_path.is_none() {
                     script_path = Some("-".to_string());
                 } else {
@@ -267,6 +267,22 @@ fn run_source(rt: &mut Runtime, source: &str, name: &str, mode: PrintMode) -> i3
         }
         Err(e) => {
             eprintln!("erro em {}: {}", name, e);
+            // se tem linha/col, mostra um trecho com caret
+            if e.line > 0 {
+                let line_idx = e.line.saturating_sub(1);
+                if let Some(src_line) = source.lines().nth(line_idx) {
+                    eprintln!("--> {}:{}:{}", name, e.line, e.col);
+                    eprintln!("{}", src_line);
+                    if e.col > 0 {
+                        let mut caret = String::new();
+                        for _ in 1..e.col {
+                            caret.push(' ');
+                        }
+                        caret.push('^');
+                        eprintln!("{}", caret);
+                    }
+                }
+            }
             1
         }
     }

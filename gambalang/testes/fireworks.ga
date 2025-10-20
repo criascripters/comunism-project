@@ -120,7 +120,7 @@ draw_particles :: fn(screen, particles) {
     char :: p |> map_get("char")
     when (in_bounds(x, y)) {
       screen_set(s, x, y, char)
-    } { 
+    } {
       s
     }
   })
@@ -162,19 +162,22 @@ initial_state :: []
 //    (note que explode devolve uma lista de partículas, por isso uso [p] ou explode(...))
 // 5) flatten achata a lista de listas em uma lista só
 // ------------------------------------------------------------
-update_state :: fn state {
-  new_state :: state
+update_state :: fn(state) {
+  base :: state
     |> map(update_particle)
     |> filter(fn p { (p |> map_get("y")) |> lt(height + 5) })
 
-  // usa when como expressão para decidir spawnar foguete
+  // começa assumindo que não spawnou nada
+  after_spawn :: base
+
+  // reatribui after_spawn condicionalmente (sem depender de 'base' fora do bloco)
   after_spawn :: when (rand() |> lt(0.05)) {
     rocket_x  :: rand() * width
     rocket_vx :: rand() * 2 - 1
     rocket_vy :: -(rand() * 2 + 2)
-    push(new_state, new_particle(rocket_x, height - 1, rocket_vx, rocket_vy, "^"))
-  } { 
-    new_state 
+    push(after_spawn, new_particle(rocket_x, height - 1, rocket_vx, rocket_vy, "^"))
+  } {
+    after_spawn
   }
 
   // para cada partícula, se for foguete e estiver “no pico”, vira uma explosão
@@ -185,8 +188,8 @@ update_state :: fn state {
       is_peaking :: (p |> map_get("vy"))   |> gt(-0.5)
       when (is_rocket |> and(is_peaking)) {
         explode(p |> map_get("x"), p |> map_get("y"), 50)
-      } { 
-        [p] 
+      } {
+        [p]
       }
     })
     |> flatten
@@ -219,14 +222,14 @@ render :: fn screen_data {
 // - pausa 30ms
 // - chama a si mesmo com o novo estado
 //
-// importante: a linguagem tem TCO (tail-call optimization), 
+// importante: a linguagem tem TCO (tail-call optimization),
 // então essa recursao em cauda não cresce a pilha e funciona tipo um loop
 // ------------------------------------------------------------
-main_loop :: fn state {
-  new_state :: update_state(state)
-  render(draw_particles(screen, new_state))
+main_loop :: fn(state) {
+  current_state :: update_state(state)
+  render(draw_particles(screen, current_state))
   sleep_ms(30)
-  main_loop(new_state)   // chamada em cauda => trampolim (sem stack overflow)
+  main_loop(current_state)   // chamada em cauda => trampolim (sem stack overflow)
 }
 
 
