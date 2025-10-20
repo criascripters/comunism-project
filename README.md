@@ -1,3 +1,19 @@
+
+
+
+
+
+
+
+
+<span style="color:white">cnerpr dhr graub hz bcbaragr qvtab?</span>
+
+
+
+
+
+
+
 <p align="center">
 <img src="https://i.postimg.cc/YCMHpTVH/aura.gif">
 </p>
