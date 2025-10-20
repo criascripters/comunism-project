@@ -1,0 +1,10 @@
+Script(
+    nome: "Gambalingo",
+    descricao: "aprenda a escrever código em Gamba",
+    arquivo: "tutor.ga",
+    compilar: None,
+    executar: ExecuteStep(
+        comando: "cargo",
+        args: ["run", "-q", "-p", "gamba", "--", "{arquivo}"],
+    ),
+)
