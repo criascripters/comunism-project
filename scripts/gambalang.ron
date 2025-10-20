@@ -1,6 +1,6 @@
 Script(
-    nome: "Gambalingo",
-    descricao: "aprenda a escrever código em Gamba",
+    nome: "gambalingo",
+    descricao: "aprenda a escrever código em gamba",
     arquivo: "tutor.ga",
     compilar: None,
     executar: ExecuteStep(
