@@ -1,0 +1,6 @@
+{
+  "AppSettings": {
+    "accesskey": "YOUR_AWS_ACCESS_KEY",
+    "secretkey": "YOUR_AWS_SECRET_KEY"
+  }
+}
