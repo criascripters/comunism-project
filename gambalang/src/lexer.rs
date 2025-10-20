@@ -20,8 +20,12 @@ pub enum TokenKind {
     Star,
     Slash,
     Percent,
-    PipeOp,      // |>
-    DoubleColon, // ::
+    PipeOp,       // |>
+    DoubleColon,  // ::
+    Bar,          // |
+    Greater,      // >
+    GreaterEqual, // >=
+    EqualEqual,   // ==
 
     Comma,
     Newline,
@@ -239,9 +243,44 @@ impl<'a> Lexer<'a> {
                     self.bump();
                     self.make_token(TokenKind::DoubleColon)
                 }
+                '.' => {
+                    // aceita números iniciando com ponto, ex.: .5
+                    if let Some(nxt) = self.peek() {
+                        if nxt.is_ascii_digit() {
+                            tokens.push(self.lex_number(line, col, '.')?);
+                            continue;
+                        }
+                    }
+                    return Err(GambaError::lex(
+                        "caractere '.' isolado; use '0.x' ou '.x' seguido de dígitos",
+                        line,
+                        col,
+                    ));
+                }
                 '|' if self.peek() == Some('>') => {
                     self.bump();
                     self.make_token(TokenKind::PipeOp)
+                }
+                '|' => self.make_token(TokenKind::Bar),
+                '>' => {
+                    if self.peek() == Some('=') {
+                        self.bump();
+                        self.make_token(TokenKind::GreaterEqual)
+                    } else {
+                        self.make_token(TokenKind::Greater)
+                    }
+                }
+                '=' => {
+                    if self.peek() == Some('=') {
+                        self.bump();
+                        self.make_token(TokenKind::EqualEqual)
+                    } else {
+                        return Err(GambaError::lex(
+                            "caractere '=' isolado; use '==' para comparação",
+                            line,
+                            col,
+                        ));
+                    }
                 }
                 '"' => {
                     tokens.push(self.lex_string(line, col)?);

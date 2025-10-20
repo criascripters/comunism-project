@@ -47,7 +47,7 @@ impl App {
         let mut ui_state = ListState::default();
         ui_state.select(Some(0));
         let (tx, rx) = unbounded();
-        Apр {
+        App {
             codigos,
             script_selecionado: 0,
             ui_state,

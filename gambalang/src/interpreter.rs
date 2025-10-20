@@ -1,6 +1,6 @@
 use crate::ast::*;
 use crate::env::{Env, FuncImpl, Lambda, Runtime, Value};
-use crate::error::GambaError;
+use crate::error::{GambaError, Suggestion};
 
 pub fn eval_program(rt: &mut Runtime, p: Program) -> Result<Value, GambaError> {
     let mut last = Value::Unit;
@@ -10,7 +10,7 @@ pub fn eval_program(rt: &mut Runtime, p: Program) -> Result<Value, GambaError> {
     Ok(last)
 }
 
-// avalia um Program diretamente em um ambiente existente (util para builtin eval)
+// avalia um Program diretamente em um ambiente existente (util pra builtin eval)
 pub fn eval_program_in_env(env: &Env, p: Program) -> Result<Value, GambaError> {
     let mut last = Value::Unit;
     for e in p.items {
@@ -29,7 +29,11 @@ fn truthy(v: &Value) -> Result<bool, GambaError> {
 // suporte a tail-call: resultado de avaliar algo em posição de cauda
 enum TailAction {
     Return(Value),
-    TailCall { func: Value, args: Vec<Value> },
+    TailCall {
+        func: Value,
+        args: Vec<Value>,
+        style: Option<CallStyle>,
+    },
 }
 
 // avalia uma expressao em posição de cauda, permitindo trampolin quando for chamada
@@ -63,8 +67,10 @@ fn eval_tail(env: &Env, e: Expr) -> Result<TailAction, GambaError> {
                 eval_tail(env, Expr::Block(else_branch))
             }
         }
-        // chamada em cauda: nao executa agora; retorna TailCall para o trampolim do call
-        Expr::Call { func, args } => {
+        // chamada em cauda: nao executa agora; retorna TailCall pra o trampolim do call
+        Expr::Call {
+            func, args, style, ..
+        } => {
             let fval = eval_expr(env, *func)?;
             let mut evaled_args = Vec::with_capacity(args.len());
             for a in args {
@@ -73,6 +79,7 @@ fn eval_tail(env: &Env, e: Expr) -> Result<TailAction, GambaError> {
             Ok(TailAction::TailCall {
                 func: fval,
                 args: evaled_args,
+                style: Some(style),
             })
         }
         // qualquer outra coisa: avalia normalmente e retorna
@@ -101,10 +108,22 @@ pub fn eval_expr(env: &Env, e: Expr) -> Result<Value, GambaError> {
             }
             Ok(Value::List(vs))
         }
-        Expr::Ident(name) => env
-            .get(&name)
-            .ok_or_else(|| GambaError::runtime(format!("nome não encontrado: {}", name))),
+        Expr::Ident(name) => env.get(&name).ok_or_else(|| {
+            GambaError::runtime(format!("nome não encontrado: '{}'", name))
+                .add_suggestion(Suggestion::new(
+                    "verifique se você definiu este nome com '::' antes de usá-lo",
+                ))
+                .add_suggestion(Suggestion::new("nomes são case-sensitive"))
+        }),
         Expr::Let { name, expr } => {
+            // semântica de let:
+            // - se o nome ainda nao existe no escopo atual: pré-declara (Unit) antes de avaliar o RHS
+            //   isso deixa "let rec" o padrão pra definições novas (funções recursivas ficam naturais)
+            // - se ja existe: é rebind (não pré-declara); o RHS enxerga o valor anterior
+            let is_rebind = env.contains_local(&name);
+            if !is_rebind {
+                env.predeclare(name.clone());
+            }
             let v = eval_expr(env, *expr)?;
             env.set(name, v.clone())?;
             Ok(v)
@@ -126,20 +145,26 @@ pub fn eval_expr(env: &Env, e: Expr) -> Result<Value, GambaError> {
             body,
             env: env.clone(),
         }))),
-        Expr::Call { func, args } => {
+        Expr::Call {
+            func,
+            args,
+            call_line,
+            call_col,
+            style,
+        } => {
             let fval = eval_expr(env, *func)?;
             let mut arg_vals = Vec::with_capacity(args.len());
             for a in args {
                 arg_vals.push(eval_expr(env, a)?);
             }
-            call(env, fval, arg_vals)
+            call(env, fval, arg_vals, Some(style)).map_err(|e| e.with_pos(call_line, call_col))
         }
         Expr::Group(inner) => eval_expr(env, *inner),
         Expr::Block(b) => eval_block(env, b),
         Expr::Binary { op, left, right } => {
             let l = eval_expr(env, *left)?;
             let r = eval_expr(env, *right)?;
-            match (op, l, r) {
+            match (op, l.clone(), r.clone()) {
                 (BinaryOp::Add, Value::Number(a), Value::Number(b)) => Ok(Value::Number(a + b)),
                 // concatenação de strings com +
                 (BinaryOp::Add, Value::String(a), v) => Ok(Value::String(format!("{}{}", a, v))),
@@ -148,9 +173,15 @@ pub fn eval_expr(env: &Env, e: Expr) -> Result<Value, GambaError> {
                 (BinaryOp::Mul, Value::Number(a), Value::Number(b)) => Ok(Value::Number(a * b)),
                 (BinaryOp::Div, Value::Number(a), Value::Number(b)) => Ok(Value::Number(a / b)),
                 (BinaryOp::Mod, Value::Number(a), Value::Number(b)) => Ok(Value::Number(a % b)),
-                _ => Err(GambaError::runtime(
-                    "operação binária inválida para tipos fornecidos",
-                )),
+                (BinaryOp::Gt, Value::Number(a), Value::Number(b)) => Ok(Value::Bool(a > b)),
+                (BinaryOp::Ge, Value::Number(a), Value::Number(b)) => Ok(Value::Bool(a >= b)),
+                (BinaryOp::Eq, a, b) => Ok(Value::Bool(eq_value(&a, &b))),
+                _ => Err(GambaError::runtime(format!(
+                    "operação inválida: tipos incompatíveis para o operador {:?} entre {} e {}",
+                    op,
+                    l.clone().type_name(),
+                    r.clone().type_name()
+                ))),
             }
         }
         Expr::UnaryMinus(inner) => {
@@ -163,7 +194,32 @@ pub fn eval_expr(env: &Env, e: Expr) -> Result<Value, GambaError> {
     }
 }
 
-fn call(env: &Env, fval: Value, args: Vec<Value>) -> Result<Value, GambaError> {
+fn eq_value(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => x == y,
+        (Value::Bool(x), Value::Bool(y)) => x == y,
+        (Value::String(x), Value::String(y)) => x == y,
+        (Value::Unit, Value::Unit) => true,
+        (Value::List(xs), Value::List(ys)) => {
+            xs.len() == ys.len() && xs.iter().zip(ys.iter()).all(|(u, v)| eq_value(u, v))
+        }
+        (Value::Map(mx), Value::Map(my)) => {
+            if mx.len() != my.len() {
+                return false;
+            }
+            mx.iter()
+                .all(|(k, vx)| my.get(k).map_or(false, |vy| eq_value(vx, vy)))
+        }
+        _ => false,
+    }
+}
+
+fn call(
+    env: &Env,
+    fval: Value,
+    args: Vec<Value>,
+    style: Option<CallStyle>,
+) -> Result<Value, GambaError> {
     let mut current_func = fval;
     let mut current_args = args;
 
@@ -176,7 +232,7 @@ fn call(env: &Env, fval: Value, args: Vec<Value>) -> Result<Value, GambaError> {
             Value::Func(FuncImpl::Lambda(l)) => {
                 if l.params.len() != current_args.len() {
                     return Err(GambaError::runtime(format!(
-                        "função esperava {} args, recebeu {}",
+                        "a função anônima esperava {} argumentos, mas recebeu {}",
                         l.params.len(),
                         current_args.len()
                     )));
@@ -196,30 +252,53 @@ fn call(env: &Env, fval: Value, args: Vec<Value>) -> Result<Value, GambaError> {
                     eval_expr(&frame, e)?;
                 }
 
-                // última expressão em posição de cauda: pode devolver TailCall para trampolim
+                // ultima expressão em posição de cauda: pode devolver TailCall pra trampolim
                 match eval_tail(&frame, last)? {
                     TailAction::Return(v) => return Ok(v),
-                    TailAction::TailCall { func, args } => {
+                    TailAction::TailCall { func, args, style } => {
                         // troca alvo e args e itera, sem crescer a pilha
                         current_func = func;
                         current_args = args;
+                        // o estilo já foi capturado anteriormente, continuamos com o mesmo loop
                         continue;
                     }
                 }
             }
             other => {
-                return Err(GambaError::runtime(format!(
-                    "tentativa de chamar um valor não-função (tipo {} = {}). \
-Dica: o lado direito de |> deve ser uma função (nome, chamada ou lambda). \
-Exemplos válidos: xs |> map(fn x {{ ... }}),  x |> f(a),  x |> (fn v {{ ... }}).",
-                    other.type_name(),
-                    other
-                )));
+                return Err(nonfunc_call_error(style, &other));
             }
         }
     }
 }
 
+fn nonfunc_call_error(style: Option<CallStyle>, callee: &Value) -> GambaError {
+    let hint = match style.unwrap_or(CallStyle::Internal) {
+        CallStyle::Pipe => {
+            "após |> o alvo deve ser uma função (nome, chamada ou lambda). \
+Exemplos: xs |> map(fn x { ... }),  x |> f(a),  x |> (fn v { ... })."
+        }
+        CallStyle::Juxta => {
+            "chamada por justaposição: o alvo não é uma função. \
+Dica: justaposição só vale quando o alvo é um nome de função, uma lambda ou uma chamada. \
+Se você quis apenas compor expressões, use parênteses: \
+ex.: (width - 2) - len(title). Se quis chamar, garanta que o alvo é função."
+        }
+        CallStyle::Parens => {
+            "o identificador/expressão usado como função não avalia para função. \
+Dica: verifique se o nome não foi sobrescrito por um número/string/map."
+        }
+        CallStyle::Internal => "valor chamado não é função.",
+    };
+
+    GambaError::runtime(format!(
+        "tentativa de chamar um valor não-função ({} = {}). {}",
+        callee.type_name(),
+        callee,
+        hint
+    ))
+}
+
 pub fn call_value(env: &Env, fval: Value, args: Vec<Value>) -> Result<Value, GambaError> {
-    call(env, fval, args)
+    // chamadas internas (map/reduce/each/etc.) não têm "estilo" lexical
+    call(env, fval, args, Some(CallStyle::Internal))
 }

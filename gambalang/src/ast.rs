@@ -8,6 +8,14 @@ pub struct Block {
     pub items: Vec<Expr>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum CallStyle {
+    Parens,   // f(a, b)
+    Juxta,    // f a b
+    Pipe,     // x |> f(a)  ou  x |> f a
+    Internal, // chamadas geradas pelo runtime/builtins (sem origem lexical direta)
+}
+
 #[derive(Debug, Clone)]
 pub enum Expr {
     Number(f64),
@@ -39,6 +47,10 @@ pub enum Expr {
     Call {
         func: Box<Expr>,
         args: Vec<Expr>,
+        // posição do call site; ajuda a apontar erros de runtime na chamada
+        call_line: usize,
+        call_col: usize,
+        style: CallStyle,
     },
 
     // (e)
@@ -63,4 +75,7 @@ pub enum BinaryOp {
     Mul,
     Div,
     Mod,
+    Gt,
+    Ge,
+    Eq,
 }
