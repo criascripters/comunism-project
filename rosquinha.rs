@@ -1,5 +1,3 @@
-// rosquita no terminal
-// apice da computaria moderna
 use std::io::{Write, stdout};
 use std::thread;
 use std::time::Duration;
@@ -8,10 +6,16 @@ fn main() {
     let mut a = 0.0_f32;
     let mut b = 0.0_f32;
 
-    let mut z = [0.0_f32; 1760];
-    let mut buffer = [' '; 1760];
+    // dimensões menores para caber em overlays
+    let width = 40;
+    let height = 18;
+    let size = width * height;
 
-    print!("\x1b[2J");
+    let mut z = vec![0.0_f32; size];
+    let mut buffer = vec![' '; size];
+
+    print!("\x1b[2J"); // limpa a tela
+    stdout().flush().unwrap();
 
     loop {
         buffer.fill(' ');
@@ -33,12 +37,16 @@ fn main() {
                 let n = b.sin();
                 let t = c * h * g - e * f;
 
-                let x = ((40.0 + 30.0 * dd * (l * h * m - t * n)) as i32) as usize;
-                let y = ((12.0 + 15.0 * dd * (l * h * n + t * m)) as i32) as usize;
-                let o = (x + 80 * y) as usize;
+                // escala ajustada para o tamanho menor
+                let x = ((width as f32 / 2.0) + (width as f32 / 3.0) * dd * (l * h * m - t * n))
+                    as usize;
+                let y = ((height as f32 / 2.0) + (height as f32 / 2.5) * dd * (l * h * n + t * m))
+                    as usize;
+
+                let o = x + width * y;
                 let nn = (8.0 * ((e * f - c * d * g) * m - c * d * f - e * g - l * d * n)) as i32;
 
-                if 22 > y && y > 0 && x > 0 && 80 > x && dd > z[o] {
+                if y < height && x < width && o < size && dd > z[o] {
                     z[o] = dd;
                     buffer[o] = ".,-~:;=!*#$@"
                         .chars()
@@ -46,14 +54,24 @@ fn main() {
                         .unwrap_or(' ');
                 }
 
-                i += 0.02;
+                i += 0.04; // passo maior = menos pontos, mas ainda suave
             }
             j += 0.07;
         }
 
+        // volta pro inicio da tela
         print!("\x1b[H");
-        for k in 0..1760 {
-            print!("{}", if k % 80 != 0 { buffer[k] } else { '\n' });
+
+        // renderiza
+        for k in 0..size {
+            if k > 0 && k % width == 0 {
+                print!(
+                    "
+"
+                );
+            } else {
+                print!("{}", buffer[k]);
+            }
         }
 
         stdout().flush().unwrap();
