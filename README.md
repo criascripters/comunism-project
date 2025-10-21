@@ -12,6 +12,12 @@
   um r/place, só que com código. todo pull request é aceito automaticamente.
 </p>
 
+
+[![melhor no linux](https://img.shields.io/badge/os-linux-important)]()
+
+> esse projeto foi majoritariamente desenvolvido em linux. espere encontrar boa parte dos scripts e funcionalidades quebradas em outros sistemas
+
+
 ---
 
 ## o que é isso?
