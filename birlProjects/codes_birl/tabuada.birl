@@ -1,0 +1,20 @@
+OH O HOME AI PO (MONSTRO CALCULA_AI(MONSTRO A))
+      MONSTRO I;
+      MAIS QUERO MAIS(I = 1; I <= 10; I++)
+            CE QUER VER ESSA PORRA? ("%d x %d = %d\n", A, I, A*I);
+      BIRL
+      BORA CUMPADE 0;
+BIRL
+
+HORA DO SHOW
+      MONSTRO N;
+      CE QUER VER ESSA PORRA? ("tabuada de qual número você quer ver aí cumpade?\n");
+      QUE QUE CE QUER MONSTRAO? ("%d", &N);
+
+      CE QUER VER ESSA PORRA? ("\n-----------\n");
+
+
+      AJUDA O MALUCO TA DOENTE CALCULA_AI(N);
+      CE QUER VER ESSA PORRA? ("-----------\n");
+
+BIRL
