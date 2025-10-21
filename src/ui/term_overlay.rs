@@ -122,8 +122,14 @@ impl TermOverlay {
     }
 
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
-        let cols = area.width.max(1);
-        let rows = area.height.max(1);
+        // calcua o inner pra redimensionar o vt100
+        let inner = area.inner(Margin {
+            horizontal: 1,
+            vertical: 1,
+        });
+
+        let cols = inner.width.max(1);
+        let rows = inner.height.max(1);
         self.resize(cols, rows);
         self.pump();
 
