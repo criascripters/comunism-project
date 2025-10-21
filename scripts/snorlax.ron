@@ -1,13 +1,10 @@
 Script(
     nome: "UploadToS3",
     descricao: "CLI for S3",
-    arquivo: "SnorlaxS3",  
-
-    compilar: none,
-
+    arquivo: "SnorlaxS3",
+    compilar: None,
     executar: ExecuteStep(
         comando: "dotnet",
-        args: ["run"],
-        working_dir: "../SnorlaxS3", 
+        args: ["run", "--project", "SnorlaxS3"],
     ),
 )
