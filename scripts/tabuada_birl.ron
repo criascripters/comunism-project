@@ -1,9 +1,9 @@
 Script(
     nome: "Tabuada em Birl",
     descricao: "gerador de tabuada em BIRL (Bambam`s 'It`s show time' Recursive Language)",
-    arquivo: "tabuada-birl.js",
+    arquivo: "RODADOR-DE-BIRL.js",
     executar: ExecuteStep(
         comando: "node",
-        args: ["tabuada-birl.js", "tabuada"],
+        args: ["RODADOR-DE-BIRL.js", "tabuada"],
     ),
 )
