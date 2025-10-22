@@ -1,0 +1,9 @@
+Script(
+    nome: "Relogio em Birl",
+    descricao: "Ampulheta de 5 segundos feita em BIRL",
+    arquivo: "RODADOR-DE-BIRL.js",
+    executar: ExecuteStep(
+        comando: "node",
+        args: ["RODADOR-DE-BIRL.js", "relogio"],
+    ),
+)
