@@ -149,8 +149,8 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
 
     // renderiza qualquer overlay (terminal ou mensagem)
     if let Some(ov) = &mut app.overlay {
-        let need_w = 80 + 2;
-        let need_h = 22 + 2;
+        let need_w = 98 + 2;
+        let need_h = 36 + 2;
         let area = centered_rect(need_w, need_h, frame.area());
         let final_area = if area.width < need_w || area.height < need_h {
             frame.area()

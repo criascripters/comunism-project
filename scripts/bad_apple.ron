@@ -1,0 +1,12 @@
+Script(
+    nome: "Maça do mal",
+    descricao: "é do mau ou do mal??? Sei lá. BAD APPLE",
+    arquivo: "main.go",
+
+    compilar: None,
+
+    executar: ExecuteStep(
+        comando: "go",
+        args: ["run", "./maça_do_mal/main.go"],
+    ),
+)
