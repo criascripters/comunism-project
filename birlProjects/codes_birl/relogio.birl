@@ -47,7 +47,7 @@ OH O HOME AI PO (void REDESENHA(MONSTRO RESTANTES, MONSTRO JA_FOI))
   BIRL
 
   // redesenha embaixo
-  MAIS QUERO MAIS (I = 6; I > 3; I--)
+  MAIS QUERO MAIS (I = 5; I > 2; I--)
     MAIS QUERO MAIS (J = 0; J < 5; J++)
       ELE QUE A GENTE QUER? (JA_FOI && Arraia[I][J] != 0)
         Arraia[I][J] = 1;
@@ -69,19 +69,12 @@ OH O HOME AI PO (MONSTRO RENDERIZA(MONSTRO RESTANTES, MONSTRO JA_FOI))
 
   MONSTRO I, J;
   MAIS QUERO MAIS (I = 0; I < ALTURA; I++)
-    FRANGO *LINHA = malloc(1);
-    LINHA[0] = '\0';
-
+    FRANGO LINHA[64] = "";
     MAIS QUERO MAIS (J = 0; J < LARGURA; J++)
-      FRANGO *retorno = CE_PINTA_COM_MEU_PINTO(Arraia[I][J]);
-      size_t len1 = strlen(LINHA);
-      size_t len2 = strlen(retorno);
-      LINHA = realloc(LINHA, len1 + len2 + 1);
-      strcat(LINHA, retorno);
+      strcat(LINHA, CE_PINTA_COM_MEU_PINTO(Arraia[I][J]));
     BIRL
 
     CE QUER VER ESSA PORRA? ("%s\n", LINHA);
-    free(LINHA);
   BIRL
 
   BORA CUMPADE RESTANTES;
@@ -89,9 +82,9 @@ BIRL
 
 HORA DO SHOW
   MONSTRO I;
-  MAIS QUERO MAIS (I = 8; I >= 0; I--)
+  MAIS QUERO MAIS (I = 9; I >= 0; I--)
     LIMPA_TELA();
-    RENDERIZA(I, 8-I);
+    RENDERIZA(I, 9-I);
     CE QUER VER ESSA PORRA? ("\n");
     usleep(500000);
   BIRL
