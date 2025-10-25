@@ -25,7 +25,14 @@ pub enum TokenKind {
     Bar,          // |
     Greater,      // >
     GreaterEqual, // >=
+    Less,         // <
+    LessEqual,    // <=
     EqualEqual,   // ==
+
+    // NOVOS
+    AndAnd, // &&
+    OrOr,   // ||
+    Bang,   // !
 
     Comma,
     Newline,
@@ -51,6 +58,7 @@ pub struct Lexer<'a> {
     i: usize,
     line: usize,
     col: usize,
+    in_string: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -61,6 +69,7 @@ impl<'a> Lexer<'a> {
             i: 0,
             line: 1,
             col: 1,
+            in_string: false,
         }
     }
 
@@ -103,8 +112,23 @@ impl<'a> Lexer<'a> {
                     self.bump();
                     return Some(self.make_token(TokenKind::Newline));
                 }
-                Some('/') if self.peek2() == Some('/') => {
-                    // comentario de linha
+                // suporte a continuação de linha "\" no fim da linha (fora de strings)
+                // consome "\" seguido de "\n" e continua (sem emitir token de newline aqui)
+                Some('\\') if self.peek2() == Some('\n') => {
+                    self.bump(); // '\'
+                    self.bump(); // '\n'
+                                 // apenas continua o loop, junta as linhas
+                }
+                // tolerar "\r\n" após "\" em plataformas Windows
+                Some('\\')
+                    if self.peek2() == Some('\r') && self.chars.get(self.i + 2) == Some(&'\n') =>
+                {
+                    self.bump();
+                    self.bump();
+                    self.bump();
+                }
+                // comentarios de linha so quando não estamos dentro de string
+                Some('/') if !self.in_string && self.peek2() == Some('/') => {
                     while let Some(c) = self.peek() {
                         self.bump();
                         if c == '\n' {
@@ -178,16 +202,17 @@ impl<'a> Lexer<'a> {
 
     fn lex_string(&mut self, start_line: usize, start_col: usize) -> Result<Token, GambaError> {
         let mut s = String::new();
-        while let Some(c) = self.bump() {
-            match c {
-                '"' => {
-                    return Ok(Token {
+        self.in_string = true;
+        let out = loop {
+            match self.bump() {
+                Some('"') => {
+                    break Ok(Token {
                         kind: TokenKind::String(s),
                         line: start_line,
                         col: start_col,
                     })
                 }
-                '\\' => {
+                Some('\\') => {
                     if let Some(esc) = self.bump() {
                         match esc {
                             'n' => s.push('\n'),
@@ -201,17 +226,25 @@ impl<'a> Lexer<'a> {
                             }
                         }
                     } else {
-                        break;
+                        break Err(GambaError::lex(
+                            "string não finalizada",
+                            start_line,
+                            start_col,
+                        ));
                     }
                 }
-                _ => s.push(c),
+                Some(c) => s.push(c),
+                None => {
+                    break Err(GambaError::lex(
+                        "string não finalizada",
+                        start_line,
+                        start_col,
+                    ));
+                }
             }
-        }
-        Err(GambaError::lex(
-            "string não finalizada",
-            start_line,
-            start_col,
-        ))
+        };
+        self.in_string = false; 
+        out
     }
 
     pub fn tokenize(&mut self) -> Result<Vec<Token>, GambaError> {
@@ -239,6 +272,20 @@ impl<'a> Lexer<'a> {
                 '*' => self.make_token(TokenKind::Star),
                 '/' => self.make_token(TokenKind::Slash),
                 '%' => self.make_token(TokenKind::Percent),
+
+                '&' => {
+                    if self.peek() == Some('&') {
+                        self.bump();
+                        self.make_token(TokenKind::AndAnd)
+                    } else {
+                        return Err(GambaError::lex(
+                            "caractere '&' isolado; use '&&'",
+                            line,
+                            col,
+                        ));
+                    }
+                }
+
                 ':' if self.peek() == Some(':') => {
                     self.bump();
                     self.make_token(TokenKind::DoubleColon)
@@ -257,17 +304,30 @@ impl<'a> Lexer<'a> {
                         col,
                     ));
                 }
+                // || e |>
                 '|' if self.peek() == Some('>') => {
                     self.bump();
                     self.make_token(TokenKind::PipeOp)
                 }
-                '|' => self.make_token(TokenKind::Bar),
+                '|' if self.peek() == Some('|') => {
+                    self.bump();
+                    self.make_token(TokenKind::OrOr) // || vira OrOr
+                }
+                '|' => self.make_token(TokenKind::Bar), // single |
                 '>' => {
                     if self.peek() == Some('=') {
                         self.bump();
                         self.make_token(TokenKind::GreaterEqual)
                     } else {
                         self.make_token(TokenKind::Greater)
+                    }
+                }
+                '<' => {
+                    if self.peek() == Some('=') {
+                        self.bump();
+                        self.make_token(TokenKind::LessEqual)
+                    } else {
+                        self.make_token(TokenKind::Less)
                     }
                 }
                 '=' => {
@@ -282,6 +342,9 @@ impl<'a> Lexer<'a> {
                         ));
                     }
                 }
+
+                // !
+                '!' => self.make_token(TokenKind::Bang),
                 '"' => {
                     tokens.push(self.lex_string(line, col)?);
                     continue;

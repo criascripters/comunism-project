@@ -66,6 +66,8 @@ pub enum Expr {
         right: Box<Expr>,
     },
     UnaryMinus(Box<Expr>),
+
+    UnaryNot(Box<Expr>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,5 +79,10 @@ pub enum BinaryOp {
     Mod,
     Gt,
     Ge,
+    Lt,
+    Le,
     Eq,
+
+    And, // &&
+    Or,  // ||
 }

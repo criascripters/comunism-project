@@ -1,0 +1,111 @@
+// testes/new_features.ga
+
+// Mini harness
+assert_eq :: fn(name, got, want) {
+  ok :: eq(got, want)
+  when (ok) { println("[ok]   " + name) 1 } {
+    println("[FAIL] " + name + "  got=" + to_string(got) + "  want=" + to_string(want))
+    0
+  }
+}
+assert_true :: fn(name, cond) {
+  when (cond) { println("[ok]   " + name) 1 } {
+    println("[FAIL] " + name + "  cond=false")
+    0
+  }
+}
+assert_ok_eval :: fn(name, code_str) {
+  r :: try_eval(code_str)
+  ok :: r |> map_get("ok")
+  when (ok) { println("[ok]   " + name) 1 } {
+    err :: r |> map_get("error")
+    println("[FAIL] " + name + "  err=" + err)
+    0
+  }
+}
+assert_err_eval :: fn(name, code_str) {
+  r :: try_eval(code_str)
+  ok :: r |> map_get("ok")
+  when (not(ok)) { println("[ok]   " + name) 1 } {
+    val :: r |> map_get("value")
+    println("[FAIL] " + name + "  esperava erro, mas ok=true com value=" + to_string(val))
+    0
+  }
+}
+sum_results :: fn(xs) { reduce(xs, 0, fn(acc, x) { acc + x }) }
+
+results :: []
+
+// 1) RNG
+results :: push(results, assert_eq("rand_int(1) sempre 0", rand_int(1), 0))
+r0 :: rand()
+r1 :: rand()
+r2 :: rand()
+r3 :: rand()
+all_same :: and(eq(r0, r1), and(eq(r1, r2), eq(r2, r3)))
+results :: push(results, assert_true("rand varia entre chamadas (pouco provável empatar 4x)", not(all_same)))
+
+// 2) Divisão por zero (operador e builtins)
+results :: push(results, assert_err_eval("1 / 0 dá erro", "1 / 0"))
+results :: push(results, assert_err_eval("mod(1, 0) dá erro", "mod(1, 0)"))
+
+// 3) Lexer: '//' dentro de string não é comentário
+results :: push(results, assert_eq_eval("string com // intacta",
+  "\"https://site.com//ok\"",
+  "https://site.com//ok"))
+
+// 4) Tasks: read_file_async + await + task_done
+tmpf :: "tmp_async.txt"
+_ :: write_file(tmpf, "hello")
+t1 :: read_file_async(tmpf)
+v1 :: await(t1)
+results :: push(results, assert_eq("await(read_file_async) retorna conteúdo", v1, "hello"))
+results :: push(results, assert_true("task_done após await é true", task_done(t1)))
+
+// 5) spawn/join com Handle e join(list, sep)
+h :: spawn(fn(){ 21 + 21 })
+v :: join(h)
+results :: push(results, assert_eq("join(handle) retorna resultado", v, 42))
+results :: push(results, assert_eq("join(list, sep)", join(["a" "b" "c"], ","), "a,b,c"))
+
+// 6) par_map/par_filter com chunking (valida semântica)
+n :: 1000
+xs :: range(0, n)
+mapped :: par_map(xs, fn x { x * 2 })
+sum_mapped :: reduce(mapped, 0, fn(acc, x) { acc + x })
+results :: push(results, assert_eq("par_map soma correta", sum_mapped, 999000))  // 2 * (999*1000/2)
+filtered :: par_filter(xs, fn x { eq(x % 2, 0) })
+results :: push(results, assert_eq("par_filter conta pares", len(filtered), 500))
+
+// 7) import/require: ciclo e “erro depois corrige”
+base :: "tmp_mod_" + to_string(floor(rand() * 1000000000))
+_ :: mkdir_all(base)
+// ciclo: a -> b -> a
+_ :: write_file(base + "/a.ga", "import(\"b.ga\")
+42")
+_ :: write_file(base + "/b.ga", "import(\"a.ga\")
+99")
+results :: push(results, assert_err_eval("import ciclo detectado", "import(\"" + base + "/a.ga\")"))
+// erro e depois corrige (pega leak de 'Loading' se existir)
+_ :: write_file(base + "/bad.ga", "!")
+results :: push(results, assert_err_eval("import com erro sintático falha", "import(\"" + base + "/bad.ga\")"))
+_ :: write_file(base + "/bad.ga", "map_from_pairs([[\"ok\" true]])")
+results :: push(results, assert_ok_eval("import do mesmo módulo após correção deve funcionar", "import(\"" + base + "/bad.ga\")"))
+
+// 8) canais + fechamento (não deve vazar)
+ch :: chan_new()
+tx :: ch |> map_get("tx")
+rx :: ch |> map_get("rx")
+_ :: chan_send(tx, "hi")
+msg :: chan_recv(rx)
+results :: push(results, assert_eq("chan_send/recv", msg, "hi"))
+_ :: chan_close_tx(tx)
+// enviar após fechar deve falhar
+results :: push(results, assert_err_eval("chan_send após close falha", "chan_send(" + to_string(tx) + ", \"x\")"))
+_ :: chan_close_rx(rx)
+
+// Sumário
+total :: len(results)
+passed :: sum_results(results)
+println("")
+println("Resumo (novas features): " + to_string(passed) + "/" + to_string(total) + " passaram")
