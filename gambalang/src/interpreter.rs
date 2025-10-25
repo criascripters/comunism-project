@@ -1,6 +1,7 @@
 use crate::ast::*;
 use crate::env::{Env, FuncImpl, Lambda, Runtime, Value};
 use crate::error::{GambaError, Suggestion};
+use std::sync::Arc;
 
 pub fn eval_program(rt: &mut Runtime, p: Program) -> Result<Value, GambaError> {
     let mut last = Value::Unit;
@@ -106,7 +107,7 @@ pub fn eval_expr(env: &Env, e: Expr) -> Result<Value, GambaError> {
             for it in items {
                 vs.push(eval_expr(env, it)?);
             }
-            Ok(Value::List(vs))
+            Ok(Value::List(Arc::new(vs)))
         }
         Expr::Ident(name) => env.get(&name).ok_or_else(|| {
             GambaError::runtime(format!("nome não encontrado: '{}'", name))
@@ -117,16 +118,22 @@ pub fn eval_expr(env: &Env, e: Expr) -> Result<Value, GambaError> {
         }),
         Expr::Let { name, expr } => {
             // semântica de let:
-            // - se o nome ainda nao existe no escopo atual: pré-declara (Unit) antes de avaliar o RHS
-            //   isso deixa "let rec" o padrão pra definições novas (funções recursivas ficam naturais)
-            // - se ja existe: é rebind (não pré-declara); o RHS enxerga o valor anterior
-            let is_rebind = env.contains_local(&name);
-            if !is_rebind {
+            // - se o nome existir em algum escopo (local ou ancestral): rebind profundo (nao pré-declara),
+            //   de modo que closures possam reatribuir capturas.
+            // - caso contrario: definição nova no escopo atual com pre-declaração (let rec por padrão)
+            let exists_any = env.contains_any(&name);
+            if exists_any {
+                // rebind profundo: avalia RHS vendo o valor anterior e escreve onde já existe
+                let v = eval_expr(env, *expr)?;
+                env.set_deep(name.clone(), v.clone())?;
+                Ok(v)
+            } else {
+                // primeira definição: let rec por padrão
                 env.predeclare(name.clone());
+                let v = eval_expr(env, *expr)?;
+                env.set(name, v.clone())?;
+                Ok(v)
             }
-            let v = eval_expr(env, *expr)?;
-            env.set(name, v.clone())?;
-            Ok(v)
         }
         Expr::When {
             cond,
@@ -162,26 +169,77 @@ pub fn eval_expr(env: &Env, e: Expr) -> Result<Value, GambaError> {
         Expr::Group(inner) => eval_expr(env, *inner),
         Expr::Block(b) => eval_block(env, b),
         Expr::Binary { op, left, right } => {
-            let l = eval_expr(env, *left)?;
-            let r = eval_expr(env, *right)?;
-            match (op, l.clone(), r.clone()) {
-                (BinaryOp::Add, Value::Number(a), Value::Number(b)) => Ok(Value::Number(a + b)),
-                // concatenação de strings com +
-                (BinaryOp::Add, Value::String(a), v) => Ok(Value::String(format!("{}{}", a, v))),
-                (BinaryOp::Add, v, Value::String(b)) => Ok(Value::String(format!("{}{}", v, b))),
-                (BinaryOp::Sub, Value::Number(a), Value::Number(b)) => Ok(Value::Number(a - b)),
-                (BinaryOp::Mul, Value::Number(a), Value::Number(b)) => Ok(Value::Number(a * b)),
-                (BinaryOp::Div, Value::Number(a), Value::Number(b)) => Ok(Value::Number(a / b)),
-                (BinaryOp::Mod, Value::Number(a), Value::Number(b)) => Ok(Value::Number(a % b)),
-                (BinaryOp::Gt, Value::Number(a), Value::Number(b)) => Ok(Value::Bool(a > b)),
-                (BinaryOp::Ge, Value::Number(a), Value::Number(b)) => Ok(Value::Bool(a >= b)),
-                (BinaryOp::Eq, a, b) => Ok(Value::Bool(eq_value(&a, &b))),
-                _ => Err(GambaError::runtime(format!(
-                    "operação inválida: tipos incompatíveis para o operador {:?} entre {} e {}",
-                    op,
-                    l.clone().type_name(),
-                    r.clone().type_name()
-                ))),
+            match op {
+                BinaryOp::And => {
+                    let l = eval_expr(env, *left)?;
+                    let lb = match l {
+                        Value::Bool(b) => b,
+                        _ => return Err(GambaError::runtime("operador && exige Bool à esquerda")),
+                    };
+                    if !lb {
+                        return Ok(Value::Bool(false)); // short-circuit
+                    }
+                    let r = eval_expr(env, *right)?;
+                    let rb = match r {
+                        Value::Bool(b) => b,
+                        _ => return Err(GambaError::runtime("operador && exige Bool à direita")),
+                    };
+                    Ok(Value::Bool(lb && rb))
+                }
+                BinaryOp::Or => {
+                    let l = eval_expr(env, *left)?;
+                    let lb = match l {
+                        Value::Bool(b) => b,
+                        _ => return Err(GambaError::runtime("operador || exige Bool à esquerda")),
+                    };
+                    if lb {
+                        return Ok(Value::Bool(true)); // short-circuit
+                    }
+                    let r = eval_expr(env, *right)?;
+                    let rb = match r {
+                        Value::Bool(b) => b,
+                        _ => return Err(GambaError::runtime("operador || exige Bool à direita")),
+                    };
+                    Ok(Value::Bool(lb || rb))
+                }
+                // demais operadores: avalia os dois lados
+                _ => {
+                    let l = eval_expr(env, *left)?;
+                    let r = eval_expr(env, *right)?;
+                    match (op, l.clone(), r.clone()) {
+                        (BinaryOp::Add, Value::Number(a), Value::Number(b)) => Ok(Value::Number(a + b)),
+                        // concatenação de strings com +
+                        (BinaryOp::Add, Value::String(a), v) => Ok(Value::String(format!("{}{}", a, v))),
+                        (BinaryOp::Add, v, Value::String(b)) => Ok(Value::String(format!("{}{}", v, b))),
+                        (BinaryOp::Sub, Value::Number(a), Value::Number(b)) => Ok(Value::Number(a - b)),
+                        (BinaryOp::Mul, Value::Number(a), Value::Number(b)) => Ok(Value::Number(a * b)),
+                        (BinaryOp::Div, Value::Number(a), Value::Number(b)) => {
+                            if b == 0.0 {
+                                Err(GambaError::runtime("divisão por zero"))
+                            } else {
+                                Ok(Value::Number(a / b))
+                            }
+                        }
+                        (BinaryOp::Mod, Value::Number(a), Value::Number(b)) => {
+                            if b == 0.0 {
+                                Err(GambaError::runtime("módulo por zero"))
+                            } else {
+                                Ok(Value::Number(a % b))
+                            }
+                        }
+                        (BinaryOp::Gt, Value::Number(a), Value::Number(b)) => Ok(Value::Bool(a > b)),
+                        (BinaryOp::Ge, Value::Number(a), Value::Number(b)) => Ok(Value::Bool(a >= b)),
+                        (BinaryOp::Lt, Value::Number(a), Value::Number(b)) => Ok(Value::Bool(a < b)),
+                        (BinaryOp::Le, Value::Number(a), Value::Number(b)) => Ok(Value::Bool(a <= b)),
+                        (BinaryOp::Eq, a, b) => Ok(Value::Bool(a.equals(&b))),
+                        _ => Err(GambaError::runtime(format!(
+                            "operação inválida: tipos incompatíveis para o operador {:?} entre {} e {}",
+                            op,
+                            l.clone().type_name(),
+                            r.clone().type_name()
+                        ))),
+                    }
+                }
             }
         }
         Expr::UnaryMinus(inner) => {
@@ -191,26 +249,15 @@ pub fn eval_expr(env: &Env, e: Expr) -> Result<Value, GambaError> {
                 _ => Err(GambaError::runtime("operador - unário espera número")),
             }
         }
-    }
-}
 
-fn eq_value(a: &Value, b: &Value) -> bool {
-    match (a, b) {
-        (Value::Number(x), Value::Number(y)) => x == y,
-        (Value::Bool(x), Value::Bool(y)) => x == y,
-        (Value::String(x), Value::String(y)) => x == y,
-        (Value::Unit, Value::Unit) => true,
-        (Value::List(xs), Value::List(ys)) => {
-            xs.len() == ys.len() && xs.iter().zip(ys.iter()).all(|(u, v)| eq_value(u, v))
-        }
-        (Value::Map(mx), Value::Map(my)) => {
-            if mx.len() != my.len() {
-                return false;
+        // !
+        Expr::UnaryNot(inner) => {
+            let v = eval_expr(env, *inner)?;
+            match v {
+                Value::Bool(b) => Ok(Value::Bool(!b)),
+                _ => Err(GambaError::runtime("operador ! espera Bool")),
             }
-            mx.iter()
-                .all(|(k, vx)| my.get(k).map_or(false, |vy| eq_value(vx, vy)))
         }
-        _ => false,
     }
 }
 

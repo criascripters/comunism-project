@@ -9,6 +9,7 @@ pub mod error;
 pub mod interpreter;
 pub mod lexer;
 pub mod parser;
+pub mod scheduler;
 
 pub use crate::env::{Runtime, Value};
 pub use crate::error::GambaError;

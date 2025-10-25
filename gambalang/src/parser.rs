@@ -329,7 +329,9 @@ Ex.: xs |> map(fn x { ... })  |  x |> f(a)  |  x |> (fn v { ... })",
             BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod => 20,
             BinaryOp::Add | BinaryOp::Sub => 10,
             // comparações tem precedência menor que soma/subtração
-            BinaryOp::Gt | BinaryOp::Ge | BinaryOp::Eq => 5,
+            BinaryOp::Gt | BinaryOp::Ge | BinaryOp::Lt | BinaryOp::Le | BinaryOp::Eq => 5,
+            BinaryOp::And => 3, // &&
+            BinaryOp::Or => 2,  // ||
         }
     }
     fn token_to_binop(tok: &TokenKind) -> Option<BinaryOp> {
@@ -341,7 +343,12 @@ Ex.: xs |> map(fn x { ... })  |  x |> f(a)  |  x |> (fn v { ... })",
             TokenKind::Percent => Some(BinaryOp::Mod),
             TokenKind::Greater => Some(BinaryOp::Gt),
             TokenKind::GreaterEqual => Some(BinaryOp::Ge),
+            TokenKind::Less => Some(BinaryOp::Lt),
+            TokenKind::LessEqual => Some(BinaryOp::Le),
             TokenKind::EqualEqual => Some(BinaryOp::Eq),
+            TokenKind::AndAnd => Some(BinaryOp::And),
+            TokenKind::OrOr => Some(BinaryOp::Or),
+
             _ => None,
         }
     }
@@ -713,9 +720,33 @@ Ex.: xs |> map(fn x { ... })  |  x |> f(a)  |  x |> (fn v { ... })",
                 self.next();
                 Ok(Expr::Bool(b))
             }
+
+            // !expr
+            TokenKind::Bang => {
+                self.next();
+                let e = self.parse_primary()?;
+                Ok(Expr::UnaryNot(Box::new(e)))
+            }
+
             TokenKind::Bar => {
                 // lambda estilo rust: |params| expr ou |params| { ... }
                 self.parse_bar_lambda()
+            }
+
+            // || como lambda zero-args (equivale a "| |")
+            TokenKind::OrOr => {
+                self.next();
+                // corpo pode ser { bloco } ou expressao simples
+                self.skip_newlines();
+                let body = if self.at(&TokenKind::LBrace) {
+                    self.parse_block()?
+                } else {
+                    self.parse_lambda_body_expr()?
+                };
+                Ok(Expr::Lambda {
+                    params: vec![],
+                    body,
+                })
             }
             TokenKind::Ident(name) => {
                 // suporte inline a: nome :: expr em qualquer posição

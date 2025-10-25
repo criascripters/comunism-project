@@ -1,0 +1,26 @@
+// teste simples das funcoes de screen
+
+main :: fn() {
+  // cria screen 10x5
+  s :: screen_new(10, 5, ".")
+
+  // desenha algumas coisas
+  s :: screen_set(s, 0, 0, "a")
+  s :: screen_set(s, 9, 0, "b")
+  s :: screen_set(s, 4, 2, "x")
+
+  // blit texto
+  s :: screen_blit_text(s, 2, 1, "oi")
+
+  // mostra como string
+  println(screen_to_string(s))
+
+  // pega tamanho
+  size :: screen_size(s)
+  println("tamanho: " + to_string(size[0]) + "x" + to_string(size[1]))
+
+  // pega caractere
+  println("char em 4,2: " + screen_get(s, 4, 2))
+}
+
+main()

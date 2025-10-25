@@ -4,6 +4,7 @@ use std::env;
 use std::fs;
 use std::io::{self, IsTerminal, Read};
 use std::path::Path;
+use std::sync::Arc;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -214,7 +215,9 @@ fn inject_meta(
     use gamba::Value;
 
     // args: lista de strings com os argumentos do script após --
-    let args_list = Value::List(script_args.iter().cloned().map(Value::String).collect());
+    let args_list = Value::List(Arc::new(
+        script_args.iter().cloned().map(Value::String).collect(),
+    ));
     rt.env.set("args".to_string(), args_list)?;
 
     // __mode__: "file" | "stdin" | "eval" | "repl"

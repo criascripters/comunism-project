@@ -36,6 +36,20 @@ assert_ok_eval :: fn(name, code_str) {
   }
 }
 
+// testa se dá erro (ok=false em try_eval)
+assert_err_eval :: fn(name, code_str) {
+  r :: try_eval(code_str)
+  ok :: r |> map_get("ok")
+  when (not(ok)) {
+    println("[ok]   " + name)
+    1
+  } {
+    val :: r |> map_get("value")
+    println("[FAIL] " + name + "  esperava erro, mas ok=true com value=" + to_string(val))
+    0
+  }
+}
+
 // testa igualdade do resultado de um snippet
 assert_eq_eval :: fn(name, code_str, want) {
   r :: try_eval(code_str)
@@ -57,6 +71,9 @@ results :: push(results, assert_eq("aritmética", 3 + 4 * 2, 11))
 results :: push(results, assert_eq("concat string", "ga" + "mba", "gamba"))
 results :: push(results, assert_eq("unário -", -1 + 2, 1))
 results :: push(results, assert_eq("== binário", (1 == 1), true))
+results :: push(results, assert_eq("< binário", 2 < 3, true))
+results :: push(results, assert_eq("<= binário true", 3 <= 3, true))
+results :: push(results, assert_eq("<= binário false", 4 <= 3, false))
 
 // 2) listas
 results :: push(results, assert_eq("lista com vírgulas opcionais", [1, 2  , 3], [1 2 3]))
@@ -139,7 +156,7 @@ results :: push(results, assert_eq_eval("recursão mútua simples",
 results :: push(results, assert_eq("eval em ambiente atual",
   eval("u :: 7
 u + 5"), 12))
-results :: push(results, assert_ok_eval("try_eval captura erro",
+results :: push(results, assert_err_eval("try_eval captura erro",
   "len(123)"))
 
 // 11) strings utilitárias

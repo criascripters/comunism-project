@@ -1,0 +1,46 @@
+w :: 60
+h :: 20
+
+main :: fn() {
+  tui_begin()
+
+  x :: 5.0     // posicao
+  y :: 3.0
+  vx :: 0.7    // velocidade
+  vy :: 0.42
+
+  loop :: fn(x, y, vx, vy) {
+    // fisica simples
+    nx :: x + vx
+    ny :: y + vy
+    nvx :: vx
+    nvy :: vy + 0.03  // gravidade leve
+
+    // colisoes
+    when (nx < 0.0 || nx > (w - 1)) { nvx :: -nvx } { nvx }
+    when (ny < 0.0 || ny > (h - 1)) { nvy :: -nvy } { nvy }
+
+    nx :: clamp(nx, 0.0, w - 1)
+    ny :: clamp(ny, 0.0, h - 1)
+
+    // frame limpo e desenha bola
+    s :: screen_new(w, h, " ")
+    s :: screen_set(s, floor(nx), floor(ny), "●")
+
+    // hud
+    s :: screen_blit_text(s, 0, 0, "gamba tui press ctrl+c para sair")
+    s :: screen_blit_text(s, 0, h-1, "t=" + to_string(time()))
+
+    // apresenta
+    tui_present(s)
+    sleep_ms(16)
+
+    loop(nx, ny, nvx, nvy)
+  }
+
+  loop(x, y, vx, vy)
+
+  tui_end()
+}
+
+main()
