@@ -1,0 +1,13 @@
+__turbopack_load_page_chunks__("/_error", [
+  "static/chunks/d7304_next_dist_compiled_1e36b7d4._.js",
+  "static/chunks/d7304_next_dist_shared_lib_f8a8d2ce._.js",
+  "static/chunks/d7304_next_dist_client_ebb86adb._.js",
+  "static/chunks/d7304_next_dist_714b2aa4._.js",
+  "static/chunks/d7304_next_error_16c61b9c.js",
+  "static/chunks/[next]_entry_page-loader_ts_88f54afd._.js",
+  "static/chunks/d7304_react-dom_4aeba785._.js",
+  "static/chunks/d7304_c888feeb._.js",
+  "static/chunks/[root-of-the-server]__4cc56712._.js",
+  "static/chunks/comunism-project_diaBET_pages__error_2da965e7._.js",
+  "static/chunks/turbopack-comunism-project_diaBET_pages__error_58756673._.js"
+])

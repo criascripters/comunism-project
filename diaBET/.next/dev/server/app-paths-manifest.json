@@ -1,0 +1,7 @@
+{
+  "/api/bet/route": "app/api/bet/route.js",
+  "/games/[id]/page": "app/games/[id]/page.js",
+  "/games/page": "app/games/page.js",
+  "/my-bets/page": "app/my-bets/page.js",
+  "/page": "app/page.js"
+}
