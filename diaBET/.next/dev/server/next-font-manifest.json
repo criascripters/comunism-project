@@ -1,0 +1,31 @@
+{
+  "app": {
+    "[project]/comunism-project/diaBET/app/games/[id]/page": [
+      "static/media/cd72e39fe5f8e190-s.p.2d85de6e.woff2",
+      "static/media/216579b50e548914-s.p.a1b609f7.woff2",
+      "static/media/3df2de83712245dd-s.p.b86f99c9.woff2",
+      "static/media/1bc7fc94203521e3-s.p.888a2ca8.woff2"
+    ],
+    "[project]/comunism-project/diaBET/app/games/page": [
+      "static/media/cd72e39fe5f8e190-s.p.2d85de6e.woff2",
+      "static/media/216579b50e548914-s.p.a1b609f7.woff2",
+      "static/media/3df2de83712245dd-s.p.b86f99c9.woff2",
+      "static/media/1bc7fc94203521e3-s.p.888a2ca8.woff2"
+    ],
+    "[project]/comunism-project/diaBET/app/my-bets/page": [
+      "static/media/cd72e39fe5f8e190-s.p.2d85de6e.woff2",
+      "static/media/216579b50e548914-s.p.a1b609f7.woff2",
+      "static/media/3df2de83712245dd-s.p.b86f99c9.woff2",
+      "static/media/1bc7fc94203521e3-s.p.888a2ca8.woff2"
+    ],
+    "[project]/comunism-project/diaBET/app/page": [
+      "static/media/cd72e39fe5f8e190-s.p.2d85de6e.woff2",
+      "static/media/216579b50e548914-s.p.a1b609f7.woff2",
+      "static/media/3df2de83712245dd-s.p.b86f99c9.woff2",
+      "static/media/1bc7fc94203521e3-s.p.888a2ca8.woff2"
+    ]
+  },
+  "appUsingSizeAdjust": true,
+  "pages": {},
+  "pagesUsingSizeAdjust": false
+}
