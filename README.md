@@ -1,3 +1,5 @@
+<!-- LEIA-ME do projeto -->
+
 <p align="center">
 <img src="https://i.postimg.cc/YCMHpTVH/aura.gif">
 </p>
