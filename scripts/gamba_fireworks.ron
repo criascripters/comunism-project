@@ -4,7 +4,7 @@ Script(
     arquivo: "fireworks.ga",
     compilar: None,
     executar: ExecuteStep(
-        comando: "cargo",
-        args: ["run", "-q", "-p", "gamba", "--", "{arquivo}"],
+        comando: "gamba",
+        args: ["{arquivo}"],
     ),
 )
