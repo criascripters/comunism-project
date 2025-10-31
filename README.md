@@ -34,6 +34,10 @@ você vai precisar de algumas coisinhas pra ver o circo pegar fogo:
 - **um compilador c:** (`gcc` ou `clang`) pro nosso amigo comunista.
 - **node.js:** pra fofoca sobre o brunisco. (ugh, javascript.)
 - **python3 & pip:** pra ver cobras falantes e uma ia local que vai roubar meu emprego.
+- **gambalang:** a linguagem de programação homemade mais cherosa que tem (instala rodando `cd gambalang && cargo install --path .` no root)
+- **ruby:** por que não?
+- **perl:** pros scripts anciãos
+
 
 com tudo isso instalado, é só fazer:
 
