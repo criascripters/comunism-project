@@ -127,7 +127,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
 
     // cria a lista visual (sem highlight automático porque controlamos manualmente)
     let lista = List::new(itens)
-        .block(Block::default().title("painel fodão").borders(Borders::ALL))
+        .block(Block::default().title("painel").borders(Borders::ALL))
         .style(Style::default().fg(Color::White));
 
     // renderiza a lista com estado pro scroll automático

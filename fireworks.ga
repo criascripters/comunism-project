@@ -20,46 +20,21 @@
 
 
 // ------------------------------------------------------------
-// constantes “globais” do programa (bindings imutáveis)
+// constantes "globais" do programa (bindings imutáveis)
 // sintaxe: nome :: expressão
 // números podem ser inteiros (80) ou ponto flutuante (0.1)
 // ------------------------------------------------------------
-width   :: 80      // largura da “tela”
-height  :: 24      // altura da “tela” (número de linhas)
+width   :: 80      // largura da "tela"
+height  :: 24      // altura da "tela" (número de linhas)
 gravity :: 0.1     // gravidade (aceleração em y)
 drag    :: 0.98    // arrasto (diminui a velocidade aos poucos)
 
 
 // ------------------------------------------------------------
-// listas em gamba: [item1 item2 item3] (sem virgulas!!)
-// cons(h, t) retorna uma nova lista com h na frente de t.
-// when (cond) { A } { B } escolhe entre dois blocos e devolve um valor
-// funçoes: fn x { corpo }  ou  fn(x) { corpo }
+// tela base: agora usa o tipo Screen nativo (com copy-on-write por linha)
+// screen_new(w, h, char) cria uma tela w×h preenchida com char
 // ------------------------------------------------------------
-
-// cria uma lista com w strings " " (um espaço), recursivamente
-create_row :: fn w {
-  when (w |> eq(0)) {           // comparação numérica: eq, lt, gt, ge, le
-    []                          // lista vazia
-  } {
-    cons(" ", create_row(w - 1))
-  }
-}
-
-// uma linha vazia padrão (largura 'width')
-screen_row :: create_row(width)
-
-// cria a “tela” (lista de linhas), com 'height' linhas
-create_screen :: fn h {
-  when (h |> eq(0)) {
-    []
-  } {
-    cons(screen_row, create_screen(h - 1))
-  }
-}
-
-// tela base (imutavel): lista de 'height' linhas, cada linha é uma lista de strings de 1 char
-screen :: create_screen(height)
+screen :: screen_new(width, height, " ")
 
 
 // ------------------------------------------------------------
@@ -79,7 +54,7 @@ in_bounds :: fn(x, y) {
 // maps (dicionários):
 // - cria com map_from_pairs, usando pares [ "chave" valor ]
 // - acessa com map_get(m, "k") (erro se a chave não existir)
-// - mida com map_set(m, "k", v) que devolve um novo map
+// - muda com map_set(m, "k", v) que devolve um novo map
 //
 // isso define a particula de foguinho de artificio com campos:
 // x, y (posição) | vx, vy (velocidade) | char (símbolo a desenhar)
@@ -107,10 +82,10 @@ update_particle :: fn p {
 
 // ------------------------------------------------------------
 // reduce(lista, acumulador_inicial, fn(acc, item) { ...acc_novo })
-// percorre a lista e “dobra” em um valor
+// percorre a lista e "dobra" em um valor
 // isso printa as partículas na tela: para cada partícula p,
-// um caractere na matriz (lista de listas) se estiver dentro dos limites
-// screen_set(s, x, y, char) devolve uma nova tela com a célula alterada
+// um caractere na matriz se estiver dentro dos limites
+// screen_set(s, x, y, char) devolve uma nova tela (Screen) com a célula alterada
 // floor(x) arredonda para baixo (para coordenadas de grade)
 // ------------------------------------------------------------
 draw_particles :: fn(screen, particles) {
@@ -196,20 +171,15 @@ update_state :: fn state {
 
 
 // ------------------------------------------------------------
-// render: transforma a tela (lista de listas de strings 1-char) em uma string grande
-// - limpamos a tela com clear()
-// - para cada linha, o codigo junta os caracteres com "" (sem separador)
-// - depois o codigo junta as linhas com "
-// " para formar o “quadro” completo
+// render: transforma a tela (Screen) em uma string grande e imprime
+// - limpa a tela com clear()
+// - screen_to_string(s) converte o Screen em string com quebras de linha
 // - println imprime o quadro
+// - flush() garante que sai na hora
 // ------------------------------------------------------------
 render :: fn screen_data {
   clear()
-  screen_data
-    |> map(fn row { join(row, "") })
-    |> join("
-")
-    |> println
+  screen_data |> screen_to_string |> println
   flush()
 }
 
@@ -221,7 +191,7 @@ render :: fn screen_data {
 // - pausa 30ms
 // - chama a si mesmo com o novo estado
 //
-// importante: a linguagem tem TCO (tail-call optimization),
+// importante: a linguagem tem tco (tail-call optimization),
 // então essa recursao em cauda não cresce a pilha e funciona tipo um loop
 // ------------------------------------------------------------
 main_loop :: fn state {
