@@ -19,3 +19,5 @@ gambalang = { package = "gamba", path = "gambalang" }
 [workspace]
 members = [".", "gambalang"]
 resolver = "2"
+
+workspace.exclude = ["ascii_browser", "minecraftty"]
