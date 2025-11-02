@@ -1,0 +1,12 @@
+Script(
+    nome: "pikachu fetch",
+    descricao: "Mãe, tô no criascript",
+    arquivo: "main.go",
+
+    compilar: None,
+
+    executar: ExecuteStep(
+        comando: "go",
+        args: ["run", "./pikachufetch/main.go"],
+    ),
+)
